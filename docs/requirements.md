@@ -121,6 +121,78 @@ mediquest/
 - DB 接続は `Arc<Mutex<Connection>>`(`std::sync::Mutex`)。usecase が `tokio::task::spawn_blocking` で包んで storage を呼ぶ
 - UI 層を将来乗り換えても core / usecase / infra が資産として残る構成とする
 
+### 5.1 クレート間の依存関係
+
+矢印は Cargo の依存(`[dependencies]`)の向き。点線は `server` feature の時だけ有効な依存。
+
+```mermaid
+flowchart TB
+    subgraph ui["ui(利用者から内へ)"]
+        cli["mediquest-cli<br/>M1 バッチ"]
+        app["mediquest-app<br/>Dioxus fullstack"]
+    end
+
+    usecase["mediquest-usecase<br/>手順の合成 / struct App"]
+
+    subgraph infra["infra(core から外へ)"]
+        ai["mediquest-ai<br/>Anthropic クライアント"]
+        storage["mediquest-storage<br/>rusqlite"]
+    end
+
+    core["mediquest-core<br/>ドメイン型 / 引用照合 / 集計"]
+
+    cli --> usecase
+    app -. server feature .-> usecase
+    app --> core
+    usecase --> ai
+    usecase --> storage
+    usecase --> core
+    ai --> core
+    storage --> core
+```
+
+- `app` は core に直接依存する(サーバー関数の引数と戻り値を core の型で表し、クライアント側でも表示に使うため)。usecase / infra はサーバービルドだけに含める
+- `ai` と `storage` の間に矢印は無い。infra 同士は互いを知らない
+- `core` から出る矢印は無い。serde 以外の外部クレートにも依存しない
+
+### 5.2 1 リクエストの流れ(ソース登録→生成)
+
+```mermaid
+sequenceDiagram
+    participant B as ブラウザ(WASM)
+    participant SF as サーバー関数(app, server)
+    participant UC as usecase
+    participant ST as storage(spawn_blocking)
+    participant AI as ai
+    participant API as Anthropic API
+
+    B->>B: 画像を縮小(長辺 1600px)
+    B->>SF: register_source(name, text, images) を .await(HTTP POST)
+    SF->>UC: register_and_generate(APP, user_id, ...)
+    loop 画像 1 枚ごと
+        UC->>AI: extract_text(image)
+        AI->>API: Messages API
+        API-->>AI: 文字起こし
+        AI-->>UC: String
+    end
+    UC->>ST: insert_source(...)
+    ST-->>UC: SourceId
+    loop n 問ずつ
+        UC->>AI: generate_questions(source_text, exclude)
+        AI->>API: Messages API
+        API-->>AI: JSON
+        AI-->>UC: Vec<Question>(パース済み)
+        UC->>UC: core::contains_verbatim で quote を照合
+        UC->>ST: insert_questions(...)
+    end
+    UC-->>SF: GeneratedSummary
+    SF-->>B: Result<GeneratedSummary, ServerFnError>(JSON)
+```
+
+- サーバー関数は usecase を 1 回呼ぶだけで、ループやロジックは usecase 側にある
+- storage の呼び出しは usecase が `spawn_blocking` で包むので、tokio のワーカーはブロックされない
+- 生成が遅くなった場合は「n 問ずつ」のループをブラウザ側へ移し、サーバー関数を分割呼び出しに変える(Q13 の改善案)
+
 ## 6. データモデル
 
 - **users**: id(M2 までは 1 のみ)
