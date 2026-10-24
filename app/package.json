@@ -12,19 +12,24 @@
     "format:check": "prettier --check .",
     "format": "prettier --write .",
     "lint": "nuxt prepare && eslint .",
-    "typecheck": "nuxt typecheck",
+    "typecheck": "nuxt typecheck && tsc --project tsconfig.tools.json",
     "test:unit": "vitest run --config vitest.unit.config.ts",
     "test:integration": "vitest run --config vitest.integration.config.ts",
     "test:e2e": "playwright test",
     "build": "nuxt build",
-    "start": "node .output/server/index.mjs"
+    "start": "node .output/server/index.mjs",
+    "db:generate": "drizzle-kit generate",
+    "db:migrate": "node scripts/db-migrate.ts",
+    "db:seed": "node scripts/db-seed.ts"
   },
   "dependencies": {
     "@nuxt/ui": "4.12.0",
     "nuxt": "4.6.2",
     "tailwindcss": "^4.0.0",
     "vue": "^3.5.0",
-    "vue-router": "5.4.0"
+    "vue-router": "5.4.0",
+    "drizzle-orm": "0.45.4",
+    "better-sqlite3": "13.0.3"
   },
   "devDependencies": {
     "@nuxt/eslint": "1.17.0",
@@ -35,7 +40,9 @@
     "prettier": "^3.0.0",
     "typescript": "^5.0.0",
     "vitest": "5.0.5",
-    "vue-tsc": "^3.0.0"
+    "vue-tsc": "^3.0.0",
+    "drizzle-kit": "0.31.11",
+    "@types/better-sqlite3": "9.6.0"
   },
   "packageManager": "npm@11.12.1"
 }
