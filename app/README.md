@@ -189,3 +189,15 @@ GETは書込みをせず、未回答の現在停止または保存済み除外�
 session.statisticsはtotalItemCount/excludedCount/eligibleCount/answeredEligibleCount/unansweredEligibleCount/correctEligibleCountを返します。accuracyは **correctEligibleCount / eligibleCount の0〜1比率** です。未回答は未正答として分母に含め、statusで未完了を区別します。対象0件はaccuracy=null・accuracyStatus=no_eligible_items、それ以外はaccuracyStatus=availableです。除外した行や過去回答は削除しません。丸めや点数表示は未実装のUIへ委ねます。
 
 schema/依存追加はありません。既存のローカル利用者/socket/Host/Origin/no-store、有限JSON受信、固定エラー境界を維持します。TAKT #10停止中の監督下実装で、UI・履歴一覧・スキップ・復習・不備確定・外部認証は対象外です。
+
+## 不備報告の受付と管理者確認（Issue 32）
+
+TAKT #10 の停止中に監督下で実装した API です。UI・管理者の対応確定・通知・スキップ・不備確定による成績除外は未実装です。
+
+- `POST /api/sessions/:sessionId/items/:itemId/reports` は本人の項目に `{ "message": "指摘内容" }` を受け付けます。trim 後 1〜2000 Unicode コードポイント、未知フィールドは拒否します。未回答・回答済み・完了・停止・保存済み除外の項目から報告できます。
+- 同じ利用者・固定問題版の open 報告は一つです。初回は 201 / `replayed:false`、既存があれば 200 / `replayed:true` と既存本文を返します。別の演習や異なる本文で再送しても、最初の本文・参照項目・時刻を上書きしません。入力・所有者検証は再送判定より先です。
+- 学習者応答は `id/message/status/createdAt/replayed` のみです。報告で問題・正答・解説を取得することはできません。
+- `GET /api/admin/reports` は open のみを新しい順に返します。`limit` は既定 20、最大 100、`before` は応答の `nextCursor` を使用します。`GET /api/admin/reports/:reportId` は管理者だけが当該保存版の問題・正答・解説・引用・出典 ID を確認できます。
+- 受付は IMMEDIATE transaction と部分一意インデックスで重複を防ぎます。報告以外の出題状態・回答・集計・除外・公開状態は変更しません。新規の追加移行で既存データを保持します。
+
+本文上限、重複時の既存本文返却、受付対象状態、一覧 open 限定は Issue 32 の実装契約です。固定ローカル利用者と既存の接続元・Host・Origin 検証を使用し、全応答は no-store。外部公開用認証ではありません。
