@@ -64,7 +64,7 @@ test('preflight blocks inherited approvals and malformed settings without exposi
   t.after(() => rmSync(dir, { recursive: true, force: true }));
   const file = join(dir, 'settings.json');
   assert.deepEqual(inspectInheritedSettings([file]), []);
-  for (const settings of [{ permissions: { allow: ['Bash(SECRET_VALUE)'] } }, { hooks: { PreToolUse: ['SECRET_VALUE'] } }, { sandbox: { enabled: false } }, { sandbox: { excludedCommands: ['SECRET_VALUE'] } }]) {
+  for (const settings of [{ permissions: { allow: ['Bash(SECRET_VALUE)'] } }, { hooks: { PreToolUse: ['SECRET_VALUE'] } }, { sandbox: { enabled: false } }, { sandbox: { filesystem: { disabled: true } } }, { sandbox: { excludedCommands: ['SECRET_VALUE'] } }]) {
     writeFileSync(file, JSON.stringify(settings));
     const result = inspectInheritedSettings([file]);
     assert(result.length);

@@ -29,3 +29,13 @@ bash scripts/takt.sh workflow doctor .takt/workflows/mediquest-app.yaml
 ```
 
 固定launcherテストは偽nodenvで引数とcache/runtimeを検査する。loader回帰は実TAKTのproject/workflow loader、engineのeditフィルター、headless clientを使い、**引数だけ記録する偽CLI** への伝達を確認する。実Claude/SDK、モデル、ネットワーク、TAKT queueは実行しない。これらの成功と実sandbox/実開発の成功は別の証拠である。
+
+## trusted CLI 設定への伝達（PR37 の追補修正）
+
+2026-10-25 に `claude --version` で 2.1.310 を確認した。[公式 sandboxing 文書](https://code.claude.com/docs/en/sandboxing#repository-settings-under-an-admin-required-sandbox) は、2.1.285以降に `--settings` の `allowUnsandboxedCommands:false` でadmin-requiredとなり、projectの `network.allowedDomains` と `allowLocalBinding:true` が無視されると説明している。TAKT 0.49.0 がCLIへ渡す2項目と、projectの通信許可だけでは npm registry / localhost が許可されなかった。
+
+`scripts/takt.sh` は実行モードだけで、TAKT正式の `TAKT_CLAUDE_CLI_PATH` に `scripts/claude-trusted.mjs` を指定する。wrapperはTAKTの厳格な2項目以外のsandbox指定、設定の重複や危険なCLI上書きを拒否し、レビュー済みの固定network許可を同じ `--settings` に載せる。projectファイル全体や任意の追加許可をtrusted scopeへ昇格しない。enabled / failIfUnavailable はtrue、autoAllowBashIfSandboxed / allowUnsandboxedCommands / filesystem.disabled はfalse、excludedCommandsは空のままである。projectのdeny設定は引き続き適用され、グローバル設定を変更しない。
+
+[公式 filesystem isolation の説明](https://code.claude.com/docs/en/sandboxing#which-settings-can-disable-it) に沿って、preflightは継承された `sandbox.filesystem.disabled:true` も起動前に拒否する。ユーザー設定を自動修正せず、該当設定の見直しが必要なことを報告する。管理設定優先の制約や未知の設定注入まで上書きできる保証はしない。
+
+回帰は実TAKTのCLIパスresolver→headless client→wrapper→偽CLIまで接続し、trusted scopeの通信設定と従来のコマンド許可・読み取り工程の制限が保持されることを確認する。ネットワークを実際に通す試験ではない。Issue36の失敗履歴や作業ツリーは保持し、この修正段階ではTAKT再実行・拒否された依存導入の再試行を行わない。

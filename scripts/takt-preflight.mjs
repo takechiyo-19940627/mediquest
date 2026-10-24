@@ -15,7 +15,7 @@ export function inspectInheritedSettings(files) {
     if (settings.permissions?.allow?.length) problems.push({ file, reason: 'inherited allow rules require review' });
     if (settings.hooks && Object.keys(settings.hooks).length) problems.push({ file, reason: 'inherited hooks require review' });
     const s = settings.sandbox;
-    if (s && (s.enabled === false || s.failIfUnavailable === false || s.autoAllowBashIfSandboxed === true || s.allowUnsandboxedCommands === true || s.excludedCommands?.length)) problems.push({ file, reason: 'inherited sandbox relaxation requires review' });
+    if (s && (s.filesystem?.disabled === true || s.enabled === false || s.failIfUnavailable === false || s.autoAllowBashIfSandboxed === true || s.allowUnsandboxedCommands === true || s.excludedCommands?.length)) problems.push({ file, reason: 'inherited sandbox relaxation requires review' });
     if (['bypassPermissions', 'auto'].includes(settings.permissions?.defaultMode)) problems.push({ file, reason: 'inherited permission mode requires review' });
   }
   return problems;
