@@ -176,6 +176,11 @@ export const questionVersions = sqliteTable(
       onDelete: 'restrict',
     }),
     reviewedAt: integer('reviewed_at'),
+    invalidatedAt: integer('invalidated_at'),
+    invalidatedBy: integer('invalidated_by').references(() => users.id, {
+      onDelete: 'restrict',
+    }),
+    invalidationReason: text('invalidation_reason'),
     generationRunId: integer('generation_run_id')
       .notNull()
       .references(() => generationRuns.id, { onDelete: 'restrict' }),
@@ -185,6 +190,10 @@ export const questionVersions = sqliteTable(
     unique('question_version_number_unique').on(
       table.questionId,
       table.versionNo,
+    ),
+    check(
+      'question_invalidation_check',
+      sql`(${table.invalidatedAt} IS NULL AND ${table.invalidatedBy} IS NULL AND ${table.invalidationReason} IS NULL) OR (${table.invalidatedAt} IS NOT NULL AND ${table.invalidatedBy} IS NOT NULL AND ${table.invalidationReason} IS NOT NULL)`,
     ),
     check('question_version_positive_check', sql`${table.versionNo} >= 1`),
     check('question_quote_boolean_check', sql`${table.quoteVerified} IN (0,1)`),
@@ -254,7 +263,9 @@ export const studyItems = sqliteTable(
     >(),
     isCorrect: integer('is_correct', { mode: 'boolean' }),
     answeredAt: integer('answered_at'),
-    excludedReason: text('excluded_reason', { enum: ['stopped'] }),
+    excludedReason: text('excluded_reason', {
+      enum: ['stopped', 'invalidated'],
+    }),
     excludedAt: integer('excluded_at'),
   },
   (table) => [
@@ -270,7 +281,7 @@ export const studyItems = sqliteTable(
     ),
     check(
       'study_item_excluded_check',
-      sql`(${table.excludedReason} IS NULL AND ${table.excludedAt} IS NULL) OR (${table.excludedReason} IS NOT NULL AND ${table.excludedReason} = 'stopped' AND ${table.excludedAt} IS NOT NULL)`,
+      sql`(${table.excludedReason} IS NULL AND ${table.excludedAt} IS NULL) OR (${table.excludedReason} IS NOT NULL AND ${table.excludedReason} IN ('stopped','invalidated') AND ${table.excludedAt} IS NOT NULL)`,
     ),
   ],
 );
@@ -289,12 +300,21 @@ export const issueReports = sqliteTable(
       .notNull()
       .references(() => studyItems.id, { onDelete: 'restrict' }),
     message: text('message').notNull(),
+    resolvedBy: integer('resolved_by').references(() => users.id, {
+      onDelete: 'restrict',
+    }),
+    resolutionNote: text('resolution_note'),
+    resolvedAt: integer('resolved_at'),
     status: text('status', {
       enum: ['open', 'confirmed', 'dismissed'],
     }).notNull(),
     createdAt: integer('created_at').notNull(),
   },
   (table) => [
+    check(
+      'issue_report_resolution_check',
+      sql`(${table.resolvedBy} IS NULL AND ${table.resolutionNote} IS NULL AND ${table.resolvedAt} IS NULL) OR (${table.resolvedBy} IS NOT NULL AND ${table.resolutionNote} IS NOT NULL AND ${table.resolvedAt} IS NOT NULL)`,
+    ),
     uniqueIndex('issue_report_open_user_version_unique')
       .on(table.reportedBy, table.questionVersionId)
       .where(sql`${table.status} = 'open'`),

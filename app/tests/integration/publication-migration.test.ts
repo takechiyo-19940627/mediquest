@@ -24,7 +24,7 @@ it('migrates the preceding baseline twice while preserving existing reviewed can
     const journal = JSON.parse(
       readFileSync(join(migrations, 'meta/_journal.json'), 'utf8'),
     );
-    journal.entries = journal.entries.slice(0, -1);
+    journal.entries = journal.entries.slice(0, 3);
     writeFileSync(
       join(baseline, 'meta/_journal.json'),
       JSON.stringify(journal),
@@ -50,7 +50,19 @@ it('migrates the preceding baseline twice while preserving existing reviewed can
       'question_versions',
     ];
     const before = tables.map((table) =>
-      c.client.prepare(`select * from ${table}`).all(),
+      c.client
+        .prepare(`select * from ${table}`)
+        .all()
+        .map((row) =>
+          table === 'question_versions'
+            ? {
+                ...(row as Record<string, unknown>),
+                invalidated_at: null,
+                invalidated_by: null,
+                invalidation_reason: null,
+              }
+            : row,
+        ),
     );
     migrateDatabase(c, migrations);
     migrateDatabase(c, migrations);

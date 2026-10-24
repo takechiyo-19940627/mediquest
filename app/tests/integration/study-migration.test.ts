@@ -24,7 +24,7 @@ it('adds study tables without changing existing publication data on repeated mig
     const journal = JSON.parse(
       readFileSync(join(migrations, 'meta/_journal.json'), 'utf8'),
     );
-    journal.entries = journal.entries.slice(0, -1);
+    journal.entries = journal.entries.slice(0, 4);
     writeFileSync(
       join(baseline, 'meta/_journal.json'),
       JSON.stringify(journal),
@@ -55,7 +55,19 @@ it('adds study tables without changing existing publication data on repeated mig
       'question_versions',
     ];
     const before = tables.map((table) =>
-      c.client.prepare(`select * from ${table}`).all(),
+      c.client
+        .prepare(`select * from ${table}`)
+        .all()
+        .map((row) =>
+          table === 'question_versions'
+            ? {
+                ...(row as Record<string, unknown>),
+                invalidated_at: null,
+                invalidated_by: null,
+                invalidation_reason: null,
+              }
+            : row,
+        ),
     );
     migrateDatabase(c, migrations);
     migrateDatabase(c, migrations);

@@ -57,6 +57,7 @@ export function validateSelection(
     if (
       run.status !== 'succeeded' ||
       question.status !== 'active' ||
+      version.invalidatedAt !== null ||
       version.reviewedBy === null ||
       version.reviewedAt === null ||
       questionIds.has(question.id)
@@ -97,6 +98,7 @@ export function publicationState(db: DatabaseReader, set: SetRow) {
       position: item.position,
       questionId: version.questionId,
       fingerprint: fingerprint(version),
+      invalidatedAt: version.invalidatedAt,
       reviewedBy: version.reviewedBy,
       reviewedAt: version.reviewedAt,
       questionStatus: question.status,
@@ -114,6 +116,7 @@ export function publicationState(db: DatabaseReader, set: SetRow) {
           item.versionId,
           item.questionId,
           item.fingerprint,
+          item.invalidatedAt,
           item.reviewedBy,
           item.reviewedAt,
           item.questionStatus,

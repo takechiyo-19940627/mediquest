@@ -50,8 +50,9 @@ export function gradeAnswer(
 export function itemState(
   item: { excludedAt: number | null; answeredAt: number | null },
   questionStatus: string,
+  invalidatedAt: number | null = null,
 ) {
-  return item.excludedAt !== null
+  return invalidatedAt !== null || item.excludedAt !== null
     ? ('excluded' as const)
     : item.answeredAt !== null
       ? ('answered' as const)
@@ -86,4 +87,20 @@ export function statistics(
       ? ('available' as const)
       : ('no_eligible_items' as const),
   };
+}
+
+export function exclusionReason(
+  item: {
+    excludedReason: 'stopped' | 'invalidated' | null;
+    answeredAt: number | null;
+  },
+  questionStatus: string,
+  invalidatedAt: number | null,
+) {
+  return invalidatedAt !== null
+    ? ('invalidated' as const)
+    : (item.excludedReason ??
+        (item.answeredAt === null && questionStatus === 'stopped'
+          ? ('stopped' as const)
+          : null));
 }

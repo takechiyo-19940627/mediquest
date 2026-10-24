@@ -16,6 +16,7 @@ import { openDatabase } from '../../server/db/connection';
 import { migrateDatabase } from '../../server/db/migrate';
 import { seedAdministrator } from '../../server/db/seed';
 import { createSource } from '../../server/services/sources';
+import { waitForFileEvent } from '../fixtures/file-event';
 const root = fileURLToPath(new URL('../..', import.meta.url));
 const directory = mkdtempSync(join(tmpdir(), 'mediquest-generation-http-'));
 const database = join(directory, 'test.sqlite');
@@ -38,12 +39,30 @@ const post = (
   id: number,
   key: string = randomUUID(),
   body: unknown = { title: 'セット', requestedCount: 1 },
+  signal?: AbortSignal,
 ) =>
   fetch(`/api/admin/sources/${id}/generations`, {
     method: 'POST',
+    signal,
     headers: { 'content-type': 'application/json', 'idempotency-key': key },
     body: JSON.stringify(body),
   });
+// This is a test-harness completion deadline, not the provider's timeout contract.
+async function settledServerRequest(key: string) {
+  if (!readFileSync(events, 'utf8').split('\n').includes(`called:${key}`))
+    return;
+  await expect
+    .poll(
+      () =>
+        connection.client
+          .prepare('SELECT status FROM generation_runs WHERE request_key=?')
+          .get(key),
+      { timeout: 10000 },
+    )
+    .toMatchObject({
+      status: expect.stringMatching(/^(succeeded|failed|unknown)$/),
+    });
+}
 describe('generation HTTP with test-only transport injection', async () => {
   await setup({
     rootDir: root,
@@ -121,48 +140,134 @@ describe('generation HTTP with test-only transport injection', async () => {
   });
   it('returns 202 for a true in-flight replay, rejects conflicts, and allows GET without a second provider call', async () => {
     const key = randomUUID();
-    const before = count();
-    const pending = post(ids[1]!, key);
-    await expect.poll(count).toBe(before + 1);
-    const duplicate = await post(ids[1]!, key);
-    expect(duplicate.status).toBe(202);
-    const run = await duplicate.json();
-    expect((await (await fetch(run.statusUrl)).json()).status).toBe('running');
-    expect(
-      (await post(ids[1]!, key, { title: '異入力', requestedCount: 1 })).status,
-    ).toBe(409);
-    expect(count()).toBe(before + 1);
-    writeFileSync(`${events}.release`, 'release');
-    expect((await (await pending).json()).status).toBe('succeeded');
-    rmSync(`${events}.release`);
+    const id = createSource(
+      connection,
+      { title: 'pending', body: `SCENARIO_PENDING_DELAYED:${key}` },
+      randomUUID(),
+    ).id;
+    const controller = new AbortController();
+    const release = `${events}.${key}.release`;
+    const pending = post(id, key, undefined, controller.signal).then(
+      (response) => ({ response, error: undefined }),
+      (error) => ({ response: undefined, error }),
+    );
+    try {
+      await waitForFileEvent(events, `called:${key}`, controller.signal);
+      const duplicate = await post(id, key);
+      expect(duplicate.status).toBe(202);
+      const run = await duplicate.json();
+      expect((await (await fetch(run.statusUrl)).json()).status).toBe(
+        'running',
+      );
+      expect(
+        (await post(id, key, { title: 'different', requestedCount: 1 })).status,
+      ).toBe(409);
+      expect(
+        readFileSync(events, 'utf8')
+          .split('\n')
+          .filter((line) => line === `called:${key}`),
+      ).toHaveLength(1);
+      writeFileSync(release, 'release');
+      const result = await pending;
+      expect(result.error).toBeUndefined();
+      expect((await result.response!.json()).status).toBe('succeeded');
+    } finally {
+      controller.abort();
+      await pending;
+      await settledServerRequest(key);
+      rmSync(release, { force: true });
+    }
   });
   it('detects a real client socket abort after dispatch and records unknown without retrying', async () => {
     const key = randomUUID();
-    const before = count();
-    const req = request(`${origin}/api/admin/sources/${ids[1]}/generations`, {
+    const id = createSource(
+      connection,
+      { title: 'abort', body: `SCENARIO_PENDING:${key}` },
+      randomUUID(),
+    ).id;
+    const controller = new AbortController();
+    const req = request(`${origin}/api/admin/sources/${id}/generations`, {
       method: 'POST',
       headers: { 'content-type': 'application/json', 'idempotency-key': key },
     });
+    const closed = new Promise<void>((resolve) => req.once('close', resolve));
     req.on('error', () => {});
-    req.end(JSON.stringify({ title: '切断', requestedCount: 1 }));
-    await expect.poll(count).toBe(before + 1);
-    req.destroy();
-    await expect
-      .poll(() =>
-        connection.client
-          .prepare('SELECT status FROM generation_runs WHERE request_key=?')
-          .get(key),
-      )
-      .toEqual({ status: 'unknown' });
-    expect(readFileSync(events, 'utf8')).toContain('aborted');
+    req.end(JSON.stringify({ title: 'abort', requestedCount: 1 }));
+    try {
+      await waitForFileEvent(events, `called:${key}`, controller.signal);
+      req.destroy();
+      await closed;
+      await waitForFileEvent(events, `aborted:${key}`, controller.signal);
+      // Provider abort precedes transaction completion; status GET waits on that exact request.
+      await expect
+        .poll(
+          () =>
+            connection.client
+              .prepare('SELECT status FROM generation_runs WHERE request_key=?')
+              .get(key),
+          { timeout: 10000 },
+        )
+        .toEqual({ status: 'unknown' });
+      expect(
+        (
+          await (
+            await post(id, key, { title: 'abort', requestedCount: 1 })
+          ).json()
+        ).status,
+      ).toBe('unknown');
+      expect(
+        readFileSync(events, 'utf8')
+          .split('\n')
+          .filter((line) => line === `called:${key}`),
+      ).toHaveLength(1);
+    } finally {
+      controller.abort();
+      req.destroy();
+      await closed;
+      await settledServerRequest(key);
+    }
+  });
+  it('settles a dispatched request after an assertion failure before the next request', async () => {
+    const key = randomUUID();
+    const id = createSource(
+      connection,
+      { title: 'cleanup', body: `SCENARIO_PENDING:${key}` },
+      randomUUID(),
+    ).id;
+    const controller = new AbortController();
+    const pending = post(id, key, undefined, controller.signal).then(
+      (response) => ({ response, error: undefined }),
+      (error) => ({ response: undefined, error }),
+    );
+    await expect(
+      (async () => {
+        try {
+          await waitForFileEvent(events, `called:${key}`, controller.signal);
+          throw new Error('simulated assertion failure');
+        } finally {
+          controller.abort();
+          await pending;
+          await settledServerRequest(key);
+        }
+      })(),
+    ).rejects.toThrow('simulated assertion failure');
     expect(
-      (
-        await (
-          await post(ids[1]!, key, { title: '切断', requestedCount: 1 })
-        ).json()
-      ).status,
-    ).toBe('unknown');
-    expect(count()).toBe(before + 1);
+      connection.client
+        .prepare('SELECT status FROM generation_runs WHERE request_key=?')
+        .get(key),
+    ).toEqual({ status: 'unknown' });
+    expect(readFileSync(events, 'utf8').split('\n')).toContain(
+      `aborted:${key}`,
+    );
+    const nextKey = randomUUID();
+    const next = await post(ids[0]!, nextKey);
+    expect(next.status).toBe(201);
+    expect((await next.json()).status).toBe('succeeded');
+    expect(
+      readFileSync(events, 'utf8')
+        .split('\n')
+        .filter((line) => line === `called:${key}`),
+    ).toHaveLength(1);
   });
   it('returns failed status for explicit refusal and invalid output without leaking provider bodies', async () => {
     for (const id of [ids[2]!, ids[3]!]) {
