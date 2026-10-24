@@ -8,6 +8,13 @@
       "when": 1792826042511,
       "tag": "0000_great_jazinda",
       "breakpoints": true
+    },
+    {
+      "idx": 1,
+      "version": "6",
+      "when": 1792827815652,
+      "tag": "0001_silly_major_mapleleaf",
+      "breakpoints": true
     }
   ]
 }
