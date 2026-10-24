@@ -13,3 +13,8 @@
 /.takt/quality-gates/logs/
 /.takt/runtime.yaml
 /.takt/exec/
+
+# Autonomous supervisor local state and cross-process lock
+/.takt/supervisor/
+/.takt/supervisor-queue.lock/
+/.takt/supervisor-retries.json
