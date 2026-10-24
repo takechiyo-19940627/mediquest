@@ -87,3 +87,19 @@ TAKT の承認連携 #10 が未解決のため、このAPIは監督下の個別�
 失敗は固定日本語メッセージと `error.code` を返します。主な状態は400入力不正、403拒否、404不存在、409再送競合、413過大、415JSON以外、500予期しない障害です。本文・DBパス・SQL・生例外を応答/ログへ出しません。再送記録は `source_creation_requests` に保存し、教材と同じIMMEDIATE transactionで作成します。既存sourcesに必須列を追加せず、追加移行で既存データを保持します。
 
 結合テストは一時DB・本物のHTTPサーバーで正常、権限、再送/並行競合、入力上限、旧移行からの更新、固定エラーを確認します。複数HTTP fixtureによるNuxt生成ディレクトリ競合を避けるため結合テストはファイル間を直列実行します。実教材・実AIは使いません。
+
+## 生成受付と下書き保存サービス（Issue #18）
+
+`server/services/generation/service.ts` の `generateQuestions(input, config, provider)` は管理者の生成要求を受け付け、検証済み候補を未公開・未レビューの下書きに保存します。TAKT #10 の承認連携が未解決のため監督下の個別実装です。**HTTP生成API、実Anthropic接続、課金、画面、採用・公開、プロセス再起動時の復旧は未接続**です。テストの固定providerは `tests/` 内に限り、実アプリの生成機能として公開しません。
+
+入力は `sourceId`（正の安全整数）、`requestedCount`（1〜10）、`title`（trim後1〜200 Unicode code points）、`requestKey`（UUID形式）だけです。利用者IDは受け取らず、既存固定管理者のDB上の役割を確認します。model/promptVersionはサーバー側の引数（空白のみ不可・各200 code points以内）から受け付け、runへ固定します。具体的な本番モデルは未決定です。要求比較はsource ID・要求数・セット名を使い、後日のモデル設定変更では再送を競合扱いしません。
+
+受付transactionでdraft setとrunning runを作成し、接続を閉じてからproviderを呼びます。providerは教材本文・要求数・記録済みmodel/promptVersionを受け、success（unknownな出力）、failed（失敗確定）、unknown（結果不明）を返します。型にない応答や未知の例外も結果不明です。再送はrunning/succeeded/failed/unknownすべて元のrunを返し、providerを再呼出ししません。異入力の同一キーはdomain conflictです。別の試行には利用者が明示的に新しいキーを用意します。課金のexactly-onceを保証するものではありません。
+
+候補数は要求数と一致させ、選択肢2〜6件、IDは1〜40文字の英数字/ハイフン/アンダースコアで版内一意、選択肢文は各2,000 code points以内、正解IDは空でなく選択肢内で重複不可です。問題文・解説・引用は各10,000 code points以内かつ空白のみ不可。正規化した全候補JSONはUTF-8で256 KiB以内です。未知フィールドは拒否します。上限は初期リソース制限であり、費用保証ではありません。
+
+非空引用が教材本文に完全一致する場合だけquote_verifiedをtrueとし、不一致もdraftで残します。これは引用文字列の照合であり、医学的な正答性の検証ではありません。生成時のversion_noは1、reviewed/published情報はnull、set_items（採用・順序）はまだ作りません。
+
+`completeGeneration` はrunningの場合だけ候補とsucceededを同一transactionで保存し、既に終わったrunへの重複完了は既存結果を返します。構造不正はfailed/invalid_output、確定失敗はfailed/provider_failed、不明はunknown/provider_unknown、保存障害で候補をrollbackした場合はfailed/storage_failedを記録します。状態更新も失敗した場合は固定のgeneration_storageエラーとなり、runningが残る可能性があります。本文・正解・生provider例外をログやerror codeへ含めません。
+
+教材や過去の候補は削除せず、失敗した空draftと受付履歴も保持します。プロセス停止で残ったrunningを自動再実行・失敗化する処理はありません。後続の復旧・状態照会API設計で扱います。追加移行は `npm run db:generate` で生成し、既存users/sources/再送記録を持つDBからの更新・再適用をテストします。

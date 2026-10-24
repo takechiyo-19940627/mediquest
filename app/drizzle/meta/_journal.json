@@ -15,6 +15,13 @@
       "when": 1792827815652,
       "tag": "0001_silly_major_mapleleaf",
       "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "6",
+      "when": 1792842274820,
+      "tag": "0002_petite_demogoblin",
+      "breakpoints": true
     }
   ]
 }
