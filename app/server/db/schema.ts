@@ -1,5 +1,11 @@
 import { sql } from 'drizzle-orm';
-import { check, integer, sqliteTable, text } from 'drizzle-orm/sqlite-core';
+import {
+  check,
+  integer,
+  sqliteTable,
+  text,
+  unique,
+} from 'drizzle-orm/sqlite-core';
 
 export const users = sqliteTable(
   'users',
@@ -23,3 +29,24 @@ export const sources = sqliteTable('sources', {
     .references(() => users.id, { onDelete: 'restrict' }),
   createdAt: integer('created_at').notNull(),
 });
+
+export const sourceCreationRequests = sqliteTable(
+  'source_creation_requests',
+  {
+    id: integer('id').primaryKey({ autoIncrement: true }),
+    createdBy: integer('created_by')
+      .notNull()
+      .references(() => users.id, { onDelete: 'restrict' }),
+    requestKey: text('request_key').notNull(),
+    sourceId: integer('source_id')
+      .notNull()
+      .references(() => sources.id, { onDelete: 'restrict' }),
+    requestHash: text('request_hash').notNull(),
+  },
+  (table) => [
+    unique('source_request_user_key_unique').on(
+      table.createdBy,
+      table.requestKey,
+    ),
+  ],
+);
