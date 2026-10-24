@@ -159,7 +159,7 @@ IMMEDIATE transactionで集合の置換・revision更新または公開記録を
 
 明示ローカルmode/socket/Host/Origin/no-storeは管理APIと共通です。固定ユーザーID 1がadminまたはlearnerなら閲覧可能ですが、learnerの管理API利用は引き続き403です。ID/roleをクライアントから指定する仕組みや匿名公開・外部認証はありません。これは本人PC用で、友人向けの外部配信を安全に行う認証ではありません。
 
-TAKT #10停止中の監督下実装です。UI・履歴一覧は未実装で、canStartは現在の件数に基づく表示用情報です。開始APIはIssue #28を参照してください。不備判定は後続対応です。現行schemaにinvalidated_atはなく、不備確定・不備除外は未実装です。導入時はこの共通出題可能判定にも不備未確定条件を追加してください。
+TAKT #10停止中の監督下実装です。UI・履歴一覧は未実装で、canStartは現在の件数に基づく表示用情報です。開始APIはIssue #28を参照してください。版単位の不備確定・除外は Issue #34 を参照してください。
 
 ## 演習開始・固定出題・再取得（Issue #28）
 
@@ -174,7 +174,7 @@ GETは書込みをせず、未回答の現在停止または保存済み除外�
 
 セット公開停止後も本人の既存演習と同一開始キー再送を保持し、新しい開始だけ拒否します。追加Drizzle移行はstudy_sessions/study_itemsと一意性/FK/状態制約を導入し、既存公開集合・教材・確認情報を保持します。途中item保存失敗時はsessionごとrollbackします。
 
-再取得はページ再読込/サーバー再起動と停止除外の保存までです。回答保存APIは次節を参照してください。再開UIは未実装です。不備確定invalidated_atも未実装で、導入時にはcatalogと開始/再取得/再開の判定へ追加が必要です。
+再取得はページ再読込/サーバー再起動と停止除外の保存までです。回答保存APIは次節を参照してください。再開UIは未実装です。不備版は開始・再取得・再開でも除外します（Issue #34）。
 
 ## 回答確定・採点・本人feedback（Issue #30）
 
@@ -182,17 +182,17 @@ GETは書込みをせず、未回答の現在停止または保存済み除外�
 
 初回と同一集合の再送は200、異なる回答の再送は409です。応答はitem/session/replayed。同じ集合は初回選択・正誤・answeredAtを維持し、completed後も再送できます。保存済み回答を通常停止や公開停止のために再採点しません。未回答の停止/保存済み除外には409を返し、拒否操作では除外を書込みません。停止除外を保存する場合は明示的にresumeを呼びます。
 
-未回答GETは従来の問題DTOでfeedbackキーを持ちません。本人の確定済みitemだけfeedback（selectedIds/isCorrect/answeredAt/answerIds/explanation/quote）を追加します。再取得・サーバー再起動後も同じ保存結果を返します。他人や別sessionのitemは同じ404です。回答済みへの通常停止でもfeedbackを取得でき、明示的な保存済み除外は優先して問題を隠します。不備確定と過去回答の集計除外はまだ実装していません。
+未回答GETは従来の問題DTOでfeedbackキーを持ちません。本人の確定済みitemだけfeedback（selectedIds/isCorrect/answeredAt/answerIds/explanation/quote）を追加します。再取得・サーバー再起動後も同じ保存結果を返します。他人や別sessionのitemは同じ404です。回答済みへの通常停止でもfeedbackを取得でき、明示的な保存済み除外は優先して問題を隠します。不備版は回答済みも除外して feedback を隠します（Issue #34）。
 
 回答保存・未回答stoppedの除外同期・session完了更新は同一IMMEDIATE transactionです。途中障害は全てrollbackし、安全な500だけを返します。resumeでも除外同期後に完了を判定します。未回答0件ならcompletedとcompletedAtを一度だけ保存し、再送/resumeで時刻を変更しません。GETは状態を投影するだけで更新しません。サーバーが返すcurrentItemIdは保存済みposition順の次の未回答であり、自動遷移や自動回答を実行しません。
 
 session.statisticsはtotalItemCount/excludedCount/eligibleCount/answeredEligibleCount/unansweredEligibleCount/correctEligibleCountを返します。accuracyは **correctEligibleCount / eligibleCount の0〜1比率** です。未回答は未正答として分母に含め、statusで未完了を区別します。対象0件はaccuracy=null・accuracyStatus=no_eligible_items、それ以外はaccuracyStatus=availableです。除外した行や過去回答は削除しません。丸めや点数表示は未実装のUIへ委ねます。
 
-schema/依存追加はありません。既存のローカル利用者/socket/Host/Origin/no-store、有限JSON受信、固定エラー境界を維持します。TAKT #10停止中の監督下実装で、UI・履歴一覧・スキップ・復習・不備確定・外部認証は対象外です。
+schema/依存追加はありません。既存のローカル利用者/socket/Host/Origin/no-store、有限JSON受信、固定エラー境界を維持します。TAKT #10停止中の監督下実装で、UI・履歴一覧・スキップ・復習・外部認証は対象外です。不備確定は Issue #34 を参照してください。
 
 ## 不備報告の受付と管理者確認（Issue 32）
 
-TAKT #10 の停止中に監督下で実装した API です。UI・管理者の対応確定・通知・スキップ・不備確定による成績除外は未実装です。
+TAKT #10 の停止中に監督下で実装した API です。UI・通知・スキップは未実装です。管理判断・不備版除外は Issue #34 を参照してください。
 
 - `POST /api/sessions/:sessionId/items/:itemId/reports` は本人の項目に `{ "message": "指摘内容" }` を受け付けます。trim 後 1〜2000 Unicode コードポイント、未知フィールドは拒否します。未回答・回答済み・完了・停止・保存済み除外の項目から報告できます。
 - 同じ利用者・固定問題版の open 報告は一つです。初回は 201 / `replayed:false`、既存があれば 200 / `replayed:true` と既存本文を返します。別の演習や異なる本文で再送しても、最初の本文・参照項目・時刻を上書きしません。入力・所有者検証は再送判定より先です。
@@ -201,3 +201,17 @@ TAKT #10 の停止中に監督下で実装した API です。UI・管理者の�
 - 受付は IMMEDIATE transaction と部分一意インデックスで重複を防ぎます。報告以外の出題状態・回答・集計・除外・公開状態は変更しません。新規の追加移行で既存データを保持します。
 
 本文上限、重複時の既存本文返却、受付対象状態、一覧 open 限定は Issue 32 の実装契約です。固定ローカル利用者と既存の接続元・Host・Origin 検証を使用し、全応答は no-store。外部公開用認証ではありません。
+
+## 管理者の不備判断と版単位の除外（Issue 34）
+
+`PUT /api/admin/reports/:reportId/resolution` は `{ "decision": "confirmed", "note": "理由" }` を受け付けます。decision は confirmed / dismissed、note は trim 後 1〜2000 Unicode コードポイントです。管理者だけが一度判断でき、同じ判断・理由の再送は元の判断者・時刻・理由を返し `replayed:true` とします。異なる内容は 409。別報告を自動解決しません。
+
+confirmed は当該保存版だけに不備を記録し、最初の不備時刻・判断者・理由を保持します。別報告の confirmed でも上書きせず、dismissed でも解除しません。問題全版の停止や公開セット構成の書換えは行いません。管理者詳細には解決記録と版不備情報を追加します。
+
+不備版は公開件数・新規開始・採用・新規公開から除外します。本人の古い回答済み履歴にも GET 時点で除外を投影し、理由 `invalidated` を返します。問題・feedback は隠しますが、保存済み選択・正誤・回答時刻は変更しません。通常停止より不備が優先し、対象ゼロの accuracy は null です。未回答不備への採点は拒否、同じ保存済み回答の再送は除外 DTO を返し、異回答は拒否します。
+
+GET は保存しません。resume / 新規回答成功の進捗同期では不備除外を版の最初の不備時刻で保存し、全問除外でも resume で完了できます。過去の完了時刻は保持します。これらの再送・完了更新・feedback 非表示は Issue 34 の実装契約です。
+
+0006 は Drizzle 生成 SQL の旧表コピーで新規 nullable 列を明示 NULL に補正しています。参照される表を再作成するため移行専用接続で FK を一時停止し、全未適用移行と履歴を IMMEDIATE transaction 内で適用、全 FK 整合を確認してから commit します。失敗時は DDL・データ・履歴を rollback し、成功・失敗とも FK を復元します。アプリ稼働を止めて既存の移行コマンドを実行してください。
+
+TAKT #10 停止中の直接監督実装です。UI・通知・改訂・複製・全版停止・不備解除・スキップ・復習・外部認証は対象外です。

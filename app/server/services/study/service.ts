@@ -1,4 +1,10 @@
-import { answerInput, gradeAnswer, itemState, statistics } from './answers';
+import {
+  answerInput,
+  gradeAnswer,
+  itemState,
+  statistics,
+  exclusionReason,
+} from './answers';
 import { ReviewError } from '../review/input';
 import { and, eq, isNull } from 'drizzle-orm';
 import type { Connection } from '../../db/connection';
@@ -26,7 +32,11 @@ function owned(db: Reader, id: number, userId: number) {
 }
 function items(db: Reader, id: number) {
   return db
-    .select({ item: studyItems, questionStatus: questions.status })
+    .select({
+      item: studyItems,
+      questionStatus: questions.status,
+      invalidatedAt: questionVersions.invalidatedAt,
+    })
     .from(studyItems)
     .innerJoin(
       questionVersions,
@@ -39,14 +49,17 @@ function items(db: Reader, id: number) {
 }
 function summary(db: Reader, session: typeof studySessions.$inferSelect) {
   const rows = items(db, session.id);
-  const projected = rows.map(({ item, questionStatus }) => ({
+  const projected = rows.map(({ item, questionStatus, invalidatedAt }) => ({
     id: item.id,
     position: item.position,
-    state: itemState(item, questionStatus),
+    state: itemState(item, questionStatus, invalidatedAt),
+    ...(invalidatedAt !== null
+      ? { excludedReason: 'invalidated' as const }
+      : {}),
   }));
   const stats = statistics(
-    rows.map(({ item, questionStatus }) => ({
-      state: itemState(item, questionStatus),
+    rows.map(({ item, questionStatus, invalidatedAt }) => ({
+      state: itemState(item, questionStatus, invalidatedAt),
       isCorrect: item.isCorrect,
     })),
   );
@@ -112,9 +125,9 @@ export function startSession(
           throw error;
         }
         const { version, question, run, source } = row;
-        // invalidated_at does not exist yet; add its exclusion here and in catalog when introduced.
         if (
           question.status !== 'active' ||
+          version.invalidatedAt !== null ||
           version.reviewedBy === null ||
           version.reviewedAt === null ||
           run.status !== 'succeeded'
@@ -194,11 +207,21 @@ function itemRow(db: Reader, sessionId: number, itemId: number) {
   return row;
 }
 function itemDto(row: ReturnType<typeof itemRow>) {
-  if (itemState(row.item, row.questionStatus) === 'excluded')
+  if (
+    itemState(row.item, row.questionStatus, row.version.invalidatedAt) ===
+    'excluded'
+  )
     return {
       id: row.item.id,
       position: row.item.position,
       state: 'excluded' as const,
+      ...(exclusionReason(
+        row.item,
+        row.questionStatus,
+        row.version.invalidatedAt,
+      ) === 'invalidated'
+        ? { excludedReason: 'invalidated' as const }
+        : {}),
     };
   const base = {
     id: row.item.id,
@@ -237,8 +260,13 @@ export function getStudyItem(
 type Writer = Pick<Connection['db'], 'select' | 'update'>;
 function syncProgress(tx: Writer, session: typeof studySessions.$inferSelect) {
   const now = Date.now();
-  for (const { item, questionStatus } of items(tx, session.id))
-    if (
+  for (const { item, questionStatus, invalidatedAt } of items(tx, session.id)) {
+    if (invalidatedAt !== null) {
+      tx.update(studyItems)
+        .set({ excludedReason: 'invalidated', excludedAt: invalidatedAt })
+        .where(eq(studyItems.id, item.id))
+        .run();
+    } else if (
       item.answeredAt === null &&
       item.excludedAt === null &&
       questionStatus === 'stopped'
@@ -253,6 +281,7 @@ function syncProgress(tx: Writer, session: typeof studySessions.$inferSelect) {
           ),
         )
         .run();
+  }
   const state = summary(tx, session);
   if (
     state.statistics.unansweredEligibleCount === 0 &&
@@ -301,7 +330,8 @@ export function answerStudyItem(
       }
       if (
         session.status !== 'in_progress' ||
-        itemState(row.item, row.questionStatus) === 'excluded'
+        itemState(row.item, row.questionStatus, row.version.invalidatedAt) ===
+          'excluded'
       )
         throw new StudyError('conflict');
       const isCorrect = gradeAnswer(

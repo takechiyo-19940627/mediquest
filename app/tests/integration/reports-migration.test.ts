@@ -24,7 +24,7 @@ it('adds report constraints while retaining publication and answered study data'
     const journal = JSON.parse(
       readFileSync(join(migrations, 'meta/_journal.json'), 'utf8'),
     );
-    journal.entries = journal.entries.slice(0, -1);
+    journal.entries = journal.entries.slice(0, 5);
     writeFileSync(
       join(baseline, 'meta/_journal.json'),
       JSON.stringify(journal),
@@ -60,7 +60,19 @@ insert into study_items(id,session_id,question_version_id,position,selected_ids_
       'question_versions',
     ];
     const before = tables.map((table) =>
-      c.client.prepare(`select * from ${table}`).all(),
+      c.client
+        .prepare(`select * from ${table}`)
+        .all()
+        .map((row) =>
+          table === 'question_versions'
+            ? {
+                ...(row as Record<string, unknown>),
+                invalidated_at: null,
+                invalidated_by: null,
+                invalidation_reason: null,
+              }
+            : row,
+        ),
     );
     migrateDatabase(c, migrations);
     migrateDatabase(c, migrations);

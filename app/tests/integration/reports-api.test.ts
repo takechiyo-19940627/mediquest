@@ -155,6 +155,9 @@ describe('issue reporting HTTP', async () => {
         'explanation',
         'quote',
         'sourceId',
+        'invalidatedAt',
+        'invalidatedBy',
+        'invalidationReason',
       ].sort(),
     );
     expect((await fetch('/api/admin/reports/99999')).status).toBe(404);

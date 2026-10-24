@@ -1,4 +1,4 @@
-import { and, desc, eq, lt, or } from 'drizzle-orm';
+import { and, desc, eq, isNull, lt, or } from 'drizzle-orm';
 import type { Connection } from '../../db/connection';
 import {
   issueReports,
@@ -11,7 +11,7 @@ import { requireAdministrator } from '../local-admin';
 import { requireLocalLearner } from '../learning-catalog/service';
 import { SourceError } from '../source-errors';
 import type { sourcePage } from '../source-input';
-import { reportInput } from './input';
+import { reportInput, resolutionInput } from './input';
 const reportFields = {
   id: issueReports.id,
   message: issueReports.message,
@@ -110,6 +110,9 @@ export function getReport(connection: Connection, id: number) {
     .select({
       ...reportFields,
       versionId: issueReports.questionVersionId,
+      resolvedBy: issueReports.resolvedBy,
+      resolvedAt: issueReports.resolvedAt,
+      resolutionNote: issueReports.resolutionNote,
       version: {
         id: questionVersions.id,
         body: questionVersions.body,
@@ -118,6 +121,9 @@ export function getReport(connection: Connection, id: number) {
         explanation: questionVersions.explanation,
         quote: questionVersions.quote,
         sourceId: questions.sourceId,
+        invalidatedAt: questionVersions.invalidatedAt,
+        invalidatedBy: questionVersions.invalidatedBy,
+        invalidationReason: questionVersions.invalidationReason,
       },
     })
     .from(issueReports)
@@ -130,4 +136,74 @@ export function getReport(connection: Connection, id: number) {
     .get();
   if (!report) throw new SourceError('missing');
   return report;
+}
+
+export function resolveReport(
+  connection: Connection,
+  id: number,
+  value: unknown,
+) {
+  return connection.db.transaction(
+    (tx) => {
+      const user = requireAdministrator({ db: tx });
+      const input = resolutionInput(value);
+      const report = tx
+        .select()
+        .from(issueReports)
+        .where(eq(issueReports.id, id))
+        .get();
+      if (!report) throw new SourceError('missing');
+      const fields = {
+        id: issueReports.id,
+        status: issueReports.status,
+        resolvedBy: issueReports.resolvedBy,
+        resolvedAt: issueReports.resolvedAt,
+        resolutionNote: issueReports.resolutionNote,
+      };
+      if (report.status !== 'open') {
+        if (
+          report.status !== input.decision ||
+          report.resolutionNote !== input.note ||
+          report.resolvedAt === null
+        )
+          throw new SourceError('conflict');
+        return {
+          ...tx
+            .select(fields)
+            .from(issueReports)
+            .where(eq(issueReports.id, id))
+            .get()!,
+          replayed: true,
+        };
+      }
+      const now = Date.now();
+      const result = tx
+        .update(issueReports)
+        .set({
+          status: input.decision,
+          resolvedBy: user,
+          resolvedAt: now,
+          resolutionNote: input.note,
+        })
+        .where(eq(issueReports.id, id))
+        .returning(fields)
+        .get();
+      if (input.decision === 'confirmed')
+        tx.update(questionVersions)
+          .set({
+            invalidatedAt: now,
+            invalidatedBy: user,
+            invalidationReason: input.note,
+          })
+          .where(
+            and(
+              eq(questionVersions.id, report.questionVersionId),
+              isNull(questionVersions.invalidatedAt),
+            ),
+          )
+          .run();
+      return { ...result, replayed: false };
+    },
+    { behavior: 'immediate' },
+  );
 }
