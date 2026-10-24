@@ -1,0 +1,94 @@
+name: mediquest-app
+description: Issueに基づくNuxt実装と品質検証。未整備のチェックは失敗扱い。
+max_steps: 12
+initial_step: plan
+personas:
+  planner: ../facets/personas/planner.md
+  implementer: ../facets/personas/implementer.md
+  reviewer: ../facets/personas/reviewer.md
+instructions:
+  plan: ../facets/instructions/plan.md
+  implement: ../facets/instructions/implement.md
+  review: ../facets/instructions/review.md
+  fix: ../facets/instructions/fix.md
+  finalize: ../facets/instructions/finalize.md
+report_formats:
+  report: ../facets/output-contracts/report.md
+steps:
+  - name: plan
+    persona: planner
+    edit: false
+    instruction: plan
+    output_contracts:
+      report:
+        - name: plan.md
+          format: report
+    rules:
+      - condition: 要件が明確で実装可能
+        next: implement
+      - condition: 重大な情報不足または先行作業が未完了
+        next: ABORT
+  - name: implement
+    persona: implementer
+    edit: true
+    instruction: implement
+    required_permission_mode: edit
+    output_contracts:
+      report:
+        - name: implement.md
+          format: report
+    rules:
+      - condition: 実装と必要な検証が完了
+        next: review
+      - condition: 進行不能または仕様判断が必要
+        next: ABORT
+  - name: review
+    persona: reviewer
+    edit: false
+    instruction: review
+    output_contracts:
+      report:
+        - name: review.md
+          format: report
+    rules:
+      - condition: 全ACを満たし指摘が解消している
+        next: finalize
+      - condition: 修正が必要
+        next: fix
+      - condition: 仕様矛盾または検証不能
+        next: ABORT
+  - name: fix
+    persona: implementer
+    edit: true
+    instruction: fix
+    required_permission_mode: edit
+    output_contracts:
+      report:
+        - name: fix.md
+          format: report
+    rules:
+      - condition: 修正と再検証が完了
+        next: review
+      - condition: 進行不能または同じ失敗を繰り返す
+        next: ABORT
+  - name: finalize
+    persona: reviewer
+    edit: false
+    instruction: finalize
+    output_contracts:
+      report:
+        - name: finalize.md
+          format: report
+    rules:
+      - condition: 全ACの証拠と最終報告が揃った
+        next: COMPLETE
+      - condition: 最終ゲートの失敗で実装修正が必要
+        next: fix
+      - condition: 証拠不足または進行不能
+        next: ABORT
+    quality_gates:
+      - type: command
+        name: app-quality
+        command: node scripts/check-app.mjs
+        cwd: .
+        timeout_ms: 2400000

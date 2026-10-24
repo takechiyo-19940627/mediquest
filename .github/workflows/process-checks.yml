@@ -1,0 +1,21 @@
+name: Process checks
+
+on:
+  push:
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  process-checks:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Validate launcher syntax
+        run: bash -n scripts/takt.sh
+      - name: Test quality gate
+        run: node --test scripts/check-app.test.mjs

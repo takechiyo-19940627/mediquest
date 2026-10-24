@@ -1,0 +1,14 @@
+language: ja
+base_branch: main
+concurrency: 1
+auto_pr: false
+draft_pr: true
+pipeline:
+  default_branch_prefix: "codex/"
+assistant:
+  init_files:
+    - AGENTS.md
+    - app/AGENTS.md
+    - docs/development-process.md
+workflow_command_gates:
+  custom_scripts: true
