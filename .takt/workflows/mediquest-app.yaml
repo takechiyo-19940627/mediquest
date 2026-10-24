@@ -89,6 +89,6 @@ steps:
     quality_gates:
       - type: command
         name: app-quality
-        command: node scripts/check-app.mjs
+        command: bash scripts/app-command.sh quality
         cwd: .
         timeout_ms: 2400000
