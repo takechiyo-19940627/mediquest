@@ -165,11 +165,12 @@ export function completeGeneration(
   );
 }
 
-export async function generateQuestions(
+async function executeGeneration(
   value: unknown,
-  config: GenerationConfig,
+  config: GenerationConfig | (() => GenerationConfig),
   provider: GenerationProvider,
   connect: Connect = openDatabase,
+  onAccepted: (replayed: boolean) => void = () => {},
 ) {
   const input = generationInput(value);
   const accepted = withDatabase(connect, (connection) =>
@@ -197,7 +198,9 @@ export async function generateQuestions(
           .where(eq(sources.id, input.sourceId))
           .get();
         if (!source) throw new GenerationError('missing');
-        const settings = generationConfig(config);
+        const settings = generationConfig(
+          typeof config === 'function' ? config() : config,
+        );
         const now = Date.now();
         const set = tx
           .insert(questionSets)
@@ -232,6 +235,7 @@ export async function generateQuestions(
       { behavior: 'immediate' },
     ),
   );
+  onAccepted(!accepted.created);
   if (!accepted.created) return summary(accepted.run);
   let outcome: GenerationOutcome;
   try {
@@ -284,4 +288,53 @@ export async function generateQuestions(
       ),
     );
   }
+}
+
+export function generateQuestions(
+  value: unknown,
+  config: GenerationConfig | (() => GenerationConfig),
+  provider: GenerationProvider,
+  connect: Connect = openDatabase,
+) {
+  return executeGeneration(value, config, provider, connect);
+}
+export async function generateQuestionsWithReceipt(
+  value: unknown,
+  config: () => GenerationConfig,
+  provider: GenerationProvider,
+  connect: Connect = openDatabase,
+) {
+  let replayed = false;
+  const run = await executeGeneration(
+    value,
+    config,
+    provider,
+    connect,
+    (value) => {
+      replayed = value;
+    },
+  );
+  return { ...run, replayed };
+}
+export function generationStatus(id: number, connect: Connect = openDatabase) {
+  if (!Number.isSafeInteger(id) || id < 1) throw new GenerationError('invalid');
+  return withDatabase(connect, (connection) => {
+    const user = requireAdministrator(connection);
+    const run = connection.db
+      .select()
+      .from(generationRuns)
+      .where(
+        and(eq(generationRuns.id, id), eq(generationRuns.requestedBy, user)),
+      )
+      .get();
+    if (!run) throw new GenerationError('missing');
+    return {
+      ...summary(run),
+      sourceId: run.sourceId,
+      requestedCount: run.requestedCount,
+      startedAt: run.startedAt,
+      finishedAt: run.finishedAt,
+      updatedAt: run.finishedAt ?? run.startedAt,
+    };
+  });
 }
