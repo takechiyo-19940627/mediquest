@@ -1,6 +1,6 @@
 # Mediquest アプリ基盤
 
-Nuxt / Vue / TypeScript と Nuxt UI を使った日本語の学習ホームです。教材がない空状態、ティール基調のライト・ダーク・OS連動テーマ、公開稼働確認APIを含みます。SQLiteのDB基盤を含みます。ローカル管理者向け教材API、生成受付・状態取得API、Anthropic adapterと下書き保存サービスを含みます。教材・生成UI、外部認証、実AIを使った検証は未対応です。演習画面のデザイン基準は今後合意します。
+Nuxt / Vue / TypeScript と Nuxt UI を使った日本語の学習ホームです。教材がない空状態、ティール基調のライト・ダーク・OS連動テーマ、公開稼働確認APIを含みます。SQLiteのDB基盤を含みます。ローカル管理者向け教材・生成・確認・採用・明示公開APIを含みます。管理UI・学習者への問題配信・外部認証・実AI検証は未対応です。演習画面のデザイン基準は今後合意します。
 
 ## 開発
 
@@ -98,7 +98,7 @@ TAKT の承認連携 #10 が未解決のため、このAPIは監督下の個別�
 
 ## 生成受付と下書き保存サービス（Issue #18）
 
-`server/services/generation/service.ts` の `generateQuestions(input, config, provider)` は管理者の生成要求を受け付け、検証済み候補を未公開・未レビューの下書きに保存します。TAKT #10 の承認連携が未解決のため監督下の個別実装です。HTTP APIとAnthropic adapterの接続は次節Issue #20を参照してください。実課金検証、画面、採用・公開、プロセス再起動時の復旧は未対応です。テストの固定providerは `tests/` 内に限り、実アプリの生成機能として公開しません。
+`server/services/generation/service.ts` の `generateQuestions(input, config, provider)` は管理者の生成要求を受け付け、検証済み候補を未公開・未レビューの下書きに保存します。TAKT #10 の承認連携が未解決のため監督下の個別実装です。HTTP APIとAnthropic adapterの接続は次節Issue #20を参照してください。実課金検証、画面、プロセス再起動時の復旧は未対応です。採用・公開APIはIssue #24の節を参照してください。テストの固定providerは `tests/` 内に限り、実アプリの生成機能として公開しません。
 
 入力は `sourceId`（正の安全整数）、`requestedCount`（1〜10）、`title`（trim後1〜200 Unicode code points）、`requestKey`（UUID形式）だけです。利用者IDは受け取らず、既存固定管理者のDB上の役割を確認します。model/promptVersionはサーバー側の引数（空白のみ不可・各200 code points以内）から受け付け、runへ固定します。具体的な本番モデルは未決定です。要求比較はsource ID・要求数・セット名を使い、後日のモデル設定変更では再送を競合扱いしません。
 
@@ -132,3 +132,29 @@ TAKT停止中の監督下実装です。`POST /api/admin/sources/:id/generations
 - [API errors](https://platform.claude.com/docs/en/api/errors): 4xxの要求拒否と5xxの障害を確認しました。結果不明や課金有無を断定する情報には使いません。
 
 実キー・実AIは検証に使っていません。unitはtransportを引数注入、HTTP結合テストはNuxtテスト設定のaliasでprovider factoryだけを置換し、通常buildは実adapterを参照します。環境変数によるfakeモードや任意API endpointは本番コードにありません。本番E2Eでtest-only transportがserver/public出力に混入しないことと、ブラウザ出力にキー設定やAPI接続先が混入しないことを検査します。
+
+## 候補閲覧と明示確認API（Issue #22）
+
+TAKT #10の承認連携が未解決のため監督下の個別実装です。既存のローカル管理境界とno-storeを適用します。教材・候補本文をログへ出しません。UI・編集は未実装で、採用順序・公開APIは次節を参照してください。人による演習デザイン合意も別途必要です。
+
+- `GET /api/admin/sets?limit=20`: id/title/status/sourceId/createdAt/candidateCount/reviewedCountとnextCursor。最大100件、createdAt/id降順、次ページはbeforeにnextCursorを指定。一覧は本文・正答を含みません。
+- `GET /api/admin/sets/:id`: セットと生成runに属するcandidates（版ID、問題ID、版番号、本文、選択肢、正答ID、解説、引用、引用照合結果、確認者/時刻、fingerprint）。候補のない受付は空配列です。published/archivedも管理者は閲覧できます。
+- `PUT /api/admin/sets/:setId/versions/:versionId/review`: `{ "fingerprint": "取得したSHA-256", "confirmed": true }`。引用不一致は `acknowledgeQuoteMismatch: true` も必要です。引用の一致も明示確認も医学的正答性を自動保証しません。
+
+確認は管理者が当該内容を確認した記録です。draftかつ成功した生成・activeな問題だけを対象に、形式・引用と内容fingerprintを再検査して同じIMMEDIATE transactionで確認者とサーバー時刻を保存します。同一内容の再送は初回確認者/時刻を保持します。fingerprintは版ID・本文・選択肢順序/ID/文・正答ID・解説・引用から計算します。古い内容や状態競合は409、所属不一致/不存在404、不正入力400、非管理者403、上限超過413、障害500です。未知フィールドとクライアント指定の確認者を拒否します。受信上限512 KiB/10秒は教材APIと共通です。
+
+確認してもセットはdraftのままで、publishedBy/Atや採用集合は変わりません。今後内容編集を導入する際は確認記録を無効化し再確認を必須とします。公開履歴を持つセットのset_itemsから参照された版は確認記録も変更できません。本件は既存reviewed列のみ利用し追加移行はありません。
+
+## 採用順序と明示公開API（Issue #24）
+
+管理者が確認済み候補の採用順を保存し、その集合を明示公開できます。公開後も学習者向け配信・演習は未実装です。管理UI、内容編集、公開停止、改訂・複製も対象外です。TAKT #10停止中の監督下実装で、演習画面の人による合意とは独立しています。
+
+- `GET /api/admin/sets/:id`: candidatesとは別に採用順のitems（versionId/position/questionId/内容fingerprint/確認情報など）、revision、publishFingerprintを返します。
+- `PUT /api/admin/sets/:id/items`: `{ "expectedRevision": 0, "versionIds": [2, 1] }`。0〜10版を順番どおり全置換します。空集合もdraft保存可能です。確認済み・active・成功run由来の当該セット/教材の版のみ採用でき、版/論理問題の重複を拒否します。同じ現行集合なら再検証後に変更なしで200、異なる集合は期待revision一致時だけ保存してrevisionを1増やします。古い操作がABA後の集合を復活させる更新は行いません。
+- `POST /api/admin/sets/:id/publish`: `{ "expectedRevision": 1, "publishFingerprint": "GETで得たSHA-256", "confirmed": true }`。空でない採用集合の形式・確認・状態・所属を再検査し、期待revisionとfingerprintが一致する場合だけ公開します。初回201、保存した公開要求と完全一致する再送200。公開者/時刻とrevisionを保持し、異なる要求は409です。
+
+publishFingerprintはセットID/教材ID/revision、採用順、版内容fingerprint、確認者/時刻、問題/生成状態を含み、確認APIの内容fingerprintとは別です。生成・確認・採用保存は自動公開しません。引用不一致も管理者が明示確認済みなら採用可能であり、医学的正答性を自動保証しません。
+
+IMMEDIATE transactionで集合の置換・revision更新または公開記録を原子的に保存します。障害時には旧集合を保持します。published/archivedや公開履歴を持つセットの集合は変更できず、その参照版の確認記録も変更できません。これはAPIでの保護で、直接DB改ざんの防止ではありません。将来編集は公開版の上書きではなく新しい版が必要です。
+
+ローカル管理者/socket/Host/Origin/no-store、512 KiB/10秒の受信上限と固定エラーを再利用します。新移行はset_itemsと集合revision/公開要求照合列を追加し、旧教材・候補・確認記録を保持します。実AI・実データを使わず、新規/旧DB移行再適用、制約、rollback、採用/公開の同時要求を検証します。
