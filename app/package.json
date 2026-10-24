@@ -15,7 +15,7 @@
     "typecheck": "nuxt typecheck && tsc --project tsconfig.tools.json",
     "test:unit": "vitest run --config vitest.unit.config.ts",
     "test:integration": "vitest run --config vitest.integration.config.ts",
-    "test:e2e": "playwright test",
+    "test:e2e": "playwright test && playwright test --config playwright.preview.config.ts",
     "build": "nuxt build",
     "start": "node .output/server/index.mjs",
     "db:generate": "drizzle-kit generate",

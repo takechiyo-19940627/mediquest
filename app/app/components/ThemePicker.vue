@@ -18,6 +18,7 @@ onMounted(() => {
       :key="theme.value"
       color="neutral"
       variant="outline"
+      :disabled="!mounted"
       :aria-pressed="
         !mounted || colorMode.unknown
           ? undefined

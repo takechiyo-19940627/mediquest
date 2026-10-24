@@ -1,3 +1,5 @@
+import { readdirSync, readFileSync } from 'node:fs';
+import { join } from 'node:path';
 import { expect, test } from '@playwright/test';
 
 test('home, keyboard theme changes, persistence and responsive layout', async ({
@@ -42,4 +44,37 @@ test('home, keyboard theme changes, persistence and responsive layout', async ({
   await page.emulateMedia({ colorScheme: 'light' });
   await expect(page.locator('html')).toHaveClass(/light/);
   expect(errors).toEqual([]);
+});
+
+test('development exercise preview is absent in production', async ({
+  request,
+}) => {
+  const response = await request.get('/dev/study-preview');
+  expect(response.status()).toBe(404);
+  expect(await response.text()).not.toContain(
+    'MEDIQUEST_DEVELOPMENT_STUDY_FIXTURE_ONLY',
+  );
+});
+
+test('production output excludes the fixed preview question text', () => {
+  const fixtures = [
+    'この練習画面で、回答を確定する操作はどれですか？',
+    'この練習画面の操作について、正しいものを2つ選んでください。',
+  ];
+  function inspect(directory: string) {
+    for (const entry of readdirSync(directory, { withFileTypes: true })) {
+      const path = join(directory, entry.name);
+      if (entry.isDirectory()) inspect(path);
+      else if (/\.(m?js|html|json|map)$/.test(entry.name)) {
+        const content = readFileSync(path, 'utf8').replace(
+          /\\u([0-9a-f]{4})/gi,
+          (_, hex: string) => String.fromCharCode(parseInt(hex, 16)),
+        );
+        for (const fixture of fixtures)
+          expect(content, path).not.toContain(fixture);
+      }
+    }
+  }
+  inspect('.output/public');
+  inspect('.output/server');
 });
