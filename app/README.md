@@ -139,7 +139,7 @@ TAKT #10の承認連携が未解決のため監督下の個別実装です。既
 
 ## 採用順序と明示公開API（Issue #24）
 
-管理者が確認済み候補の採用順を保存し、その集合を明示公開できます。公開後も学習者向け配信・演習は未実装です。管理UI、内容編集、公開停止、改訂・複製も対象外です。TAKT #10停止中の監督下実装で、演習画面の人による合意とは独立しています。
+管理者が確認済み候補の採用順を保存し、その集合を明示公開できます。公開後も問題本文配信・演習は未実装です。公開メタデータの一覧/詳細はIssue #26の節を参照してください。管理UI、内容編集、公開停止、改訂・複製も対象外です。TAKT #10停止中の監督下実装で、演習画面の人による合意とは独立しています。
 
 - `GET /api/admin/sets/:id`: candidatesとは別に採用順のitems（versionId/position/questionId/内容fingerprint/確認情報など）、revision、publishFingerprintを返します。
 - `PUT /api/admin/sets/:id/items`: `{ "expectedRevision": 0, "versionIds": [2, 1] }`。0〜10版を順番どおり全置換します。空集合もdraft保存可能です。確認済み・active・成功run由来の当該セット/教材の版のみ採用でき、版/論理問題の重複を拒否します。同じ現行集合なら再検証後に変更なしで200、異なる集合は期待revision一致時だけ保存してrevisionを1増やします。古い操作がABA後の集合を復活させる更新は行いません。
@@ -150,3 +150,13 @@ publishFingerprintはセットID/教材ID/revision、採用順、版内容finger
 IMMEDIATE transactionで集合の置換・revision更新または公開記録を原子的に保存します。障害時には旧集合を保持します。published/archivedや公開履歴を持つセットの集合は変更できず、その参照版の確認記録も変更できません。これはAPIでの保護で、直接DB改ざんの防止ではありません。将来編集は公開版の上書きではなく新しい版が必要です。
 
 ローカル管理者/socket/Host/Origin/no-store、512 KiB/10秒の受信上限と固定エラーを再利用します。新移行はset_itemsと集合revision/公開要求照合列を追加し、旧教材・候補・確認記録を保持します。実AI・実データを使わず、新規/旧DB移行再適用、制約、rollback、採用/公開の同時要求を検証します。
+
+## 学習者向け公開セット一覧・詳細（Issue #26）
+
+`GET /api/sets?limit=20` は公開セットのid/title/description/publishedAt/availableQuestionCountだけをitemsに返します。最大100件、publishedAt/id降順です。次ページはnextCursor（`published:時刻:ID`）をbeforeへ渡します。管理一覧のcreatedAtカーソルは受け付けません。
+
+`GET /api/sets/:id` は同じメタデータとcanStartを返します。採用集合にあるactive・確認済み・教材/生成所属が一致する版の論理問題数を数え、未採用候補は除外します。0件でも公開セットを残しcanStart=falseです。公開者/時刻が揃うpublishedのみ対象とし、draft/archived/不存在は同じ404です。問題/版ID、本文、選択肢、正答、解説、引用、教材本文、確認者、生成詳細は返しません。
+
+明示ローカルmode/socket/Host/Origin/no-storeは管理APIと共通です。固定ユーザーID 1がadminまたはlearnerなら閲覧可能ですが、learnerの管理API利用は引き続き403です。ID/roleをクライアントから指定する仕組みや匿名公開・外部認証はありません。これは本人PC用で、友人向けの外部配信を安全に行う認証ではありません。
+
+TAKT #10停止中の監督下実装です。UI・問題本文配信・演習開始/回答保存/履歴/再開は未実装で、canStartは現在の件数に基づく表示用情報です。将来の開始APIは受付時に公開/停止/不備を再検査する必要があります。現行schemaにinvalidated_atはなく、不備確定・不備除外は未実装です。導入時はこの共通出題可能判定にも不備未確定条件を追加してください。
