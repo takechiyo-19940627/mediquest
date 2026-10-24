@@ -1,3 +1,4 @@
+import { GenerationError } from '../../server/services/generation/contract';
 import {
   mkdtempSync,
   rmSync,
@@ -424,4 +425,37 @@ it('redacts connection close failure without invoking the provider or reporting 
   expect(c.client.prepare('SELECT status FROM generation_runs').get()).toEqual({
     status: 'running',
   });
+});
+
+it('resolves settings only for new requests and preserves replay while running or terminal after removal', async () => {
+  const { connection: c, connect } = fixture();
+  const unavailable = () => {
+    throw new GenerationError('unavailable');
+  };
+  const spy = vi.fn(provider);
+  await expect(
+    generateQuestions(input(), unavailable, spy, connect),
+  ).rejects.toMatchObject({ code: 'unavailable' });
+  expect(spy).not.toHaveBeenCalled();
+  expect(
+    c.client.prepare('SELECT COUNT(*) AS n FROM generation_runs').get(),
+  ).toEqual({ n: 0 });
+  expect(
+    c.client.prepare('SELECT COUNT(*) AS n FROM question_sets').get(),
+  ).toEqual({ n: 0 });
+  let settle!: (value: GenerationOutcome) => void;
+  const pendingOutput = new Promise<GenerationOutcome>((resolve) => {
+    settle = resolve;
+  });
+  const slow = vi.fn(async () => pendingOutput);
+  const request = input();
+  const pending = generateQuestions(request, () => config, slow, connect);
+  const running = await generateQuestions(request, unavailable, slow, connect);
+  expect(running.status).toBe('running');
+  settle({ kind: 'success', output: output() });
+  const complete = await pending;
+  expect(await generateQuestions(request, unavailable, slow, connect)).toEqual(
+    complete,
+  );
+  expect(slow).toHaveBeenCalledTimes(1);
 });

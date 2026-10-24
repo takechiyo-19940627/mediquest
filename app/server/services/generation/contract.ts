@@ -1,5 +1,5 @@
 export type GenerationErrorCode =
-  'invalid' | 'forbidden' | 'missing' | 'conflict' | 'storage';
+  'invalid' | 'forbidden' | 'missing' | 'conflict' | 'storage' | 'unavailable';
 export class GenerationError extends Error {
   constructor(public readonly code: GenerationErrorCode) {
     super(`generation_${code}`);
