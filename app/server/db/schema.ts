@@ -5,6 +5,7 @@ import {
   sqliteTable,
   text,
   unique,
+  uniqueIndex,
 } from 'drizzle-orm/sqlite-core';
 
 export const users = sqliteTable(
@@ -270,6 +271,36 @@ export const studyItems = sqliteTable(
     check(
       'study_item_excluded_check',
       sql`(${table.excludedReason} IS NULL AND ${table.excludedAt} IS NULL) OR (${table.excludedReason} IS NOT NULL AND ${table.excludedReason} = 'stopped' AND ${table.excludedAt} IS NOT NULL)`,
+    ),
+  ],
+);
+
+export const issueReports = sqliteTable(
+  'issue_reports',
+  {
+    id: integer('id').primaryKey({ autoIncrement: true }),
+    reportedBy: integer('reported_by')
+      .notNull()
+      .references(() => users.id, { onDelete: 'restrict' }),
+    questionVersionId: integer('question_version_id')
+      .notNull()
+      .references(() => questionVersions.id, { onDelete: 'restrict' }),
+    studyItemId: integer('study_item_id')
+      .notNull()
+      .references(() => studyItems.id, { onDelete: 'restrict' }),
+    message: text('message').notNull(),
+    status: text('status', {
+      enum: ['open', 'confirmed', 'dismissed'],
+    }).notNull(),
+    createdAt: integer('created_at').notNull(),
+  },
+  (table) => [
+    uniqueIndex('issue_report_open_user_version_unique')
+      .on(table.reportedBy, table.questionVersionId)
+      .where(sql`${table.status} = 'open'`),
+    check(
+      'issue_report_status_check',
+      sql`${table.status} IN ('open','confirmed','dismissed')`,
     ),
   ],
 );
