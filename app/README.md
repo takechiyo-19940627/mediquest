@@ -124,3 +124,15 @@ TAKT停止中の監督下実装です。`POST /api/admin/sources/:id/generations
 - [API errors](https://platform.claude.com/docs/en/api/errors): 4xxの要求拒否と5xxの障害を確認しました。結果不明や課金有無を断定する情報には使いません。
 
 実キー・実AIは検証に使っていません。unitはtransportを引数注入、HTTP結合テストはNuxtテスト設定のaliasでprovider factoryだけを置換し、通常buildは実adapterを参照します。環境変数によるfakeモードや任意API endpointは本番コードにありません。本番E2Eでtest-only transportがserver/public出力に混入しないことと、ブラウザ出力にキー設定やAPI接続先が混入しないことを検査します。
+
+## 候補閲覧と明示確認API（Issue #22）
+
+TAKT #10の承認連携が未解決のため監督下の個別実装です。既存のローカル管理境界とno-storeを適用します。教材・候補本文をログへ出しません。UI・編集・採用順序・公開は未実装で、人による演習デザイン合意も別途必要です。
+
+- `GET /api/admin/sets?limit=20`: id/title/status/sourceId/createdAt/candidateCount/reviewedCountとnextCursor。最大100件、createdAt/id降順、次ページはbeforeにnextCursorを指定。一覧は本文・正答を含みません。
+- `GET /api/admin/sets/:id`: セットと生成runに属するcandidates（版ID、問題ID、版番号、本文、選択肢、正答ID、解説、引用、引用照合結果、確認者/時刻、fingerprint）。候補のない受付は空配列です。published/archivedも管理者は閲覧できます。
+- `PUT /api/admin/sets/:setId/versions/:versionId/review`: `{ "fingerprint": "取得したSHA-256", "confirmed": true }`。引用不一致は `acknowledgeQuoteMismatch: true` も必要です。引用の一致も明示確認も医学的正答性を自動保証しません。
+
+確認は管理者が当該内容を確認した記録です。draftかつ成功した生成・activeな問題だけを対象に、形式・引用と内容fingerprintを再検査して同じIMMEDIATE transactionで確認者とサーバー時刻を保存します。同一内容の再送は初回確認者/時刻を保持します。fingerprintは版ID・本文・選択肢順序/ID/文・正答ID・解説・引用から計算します。古い内容や状態競合は409、所属不一致/不存在404、不正入力400、非管理者403、上限超過413、障害500です。未知フィールドとクライアント指定の確認者を拒否します。受信上限512 KiB/10秒は教材APIと共通です。
+
+確認してもセットはdraftのままで、publishedBy/Atや採用集合は変わりません。今後内容編集を導入する際は確認記録を無効化し再確認を必須とします。set_items導入時には公開版参照も確認条件へ加える必要があります。本件は既存reviewed列のみ利用し追加移行はありません。
