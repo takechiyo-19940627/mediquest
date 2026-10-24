@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import { mkdtemp, mkdir, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { discoverPackage, issueOptions, prOptions, retryAttempt, withQueueLock } from './takt-queue.mjs';
+import { discoverPackage, issueOptions, prOptions, repairLegacyIssueBase, retryAttempt, verifyFreshMain, withQueueLock } from './takt-queue.mjs';
 
 test('retry allows only two additional attempts and excludes publication failure', () => {
   assert.equal(retryAttempt({ status: 'failed' }), 2);
@@ -59,4 +59,38 @@ test('package discovery only falls back when nodenv is absent', () => {
     return '/fallback/lib/node_modules';
   }), '/fallback/lib/node_modules/takt');
   assert.throws(() => discoverPackage({}, () => { throw new Error('broken configuration'); }), /broken configuration/);
+});
+
+
+test('issue base is a branch name accepted by TAKT, never a remote-tracking ref', () => {
+  assert.equal(issueOptions({ number: 5, title: 'Bootstrap', body: '', state: 'OPEN' }).base_branch, 'main');
+});
+
+test('retry repairs only legacy issue base and preserves task identity and history', () => {
+  const original = { name: 'issue-5', source: 'issue', issue: 5, status: 'failed', base_branch: 'origin/main', branch: 'codex/issue-5', failure: { message: 'base rejected' } };
+  let state = { tasks: [original, { ...original, name: 'issue-6' }, { ...original, name: 'pr-7', source: 'pr_review' }] };
+  const store = { update: fn => { state = fn(state); return state; } };
+  repairLegacyIssueBase(store, 'issue-5');
+  assert.deepEqual(state.tasks[0], { ...original, base_branch: 'main' });
+  assert.equal(state.tasks[1].base_branch, 'origin/main');
+  repairLegacyIssueBase(store, 'pr-7');
+  assert.equal(state.tasks[2].base_branch, 'origin/main');
+  state.tasks[0] = { ...original, status: 'running' };
+  assert.throws(() => repairLegacyIssueBase(store, 'issue-5'), /failed\/exceeded/);
+});
+
+
+test('run freshness rejects fetch failure and stale local main without modifying branches', () => {
+  assert.throws(() => verifyFreshMain('/repo', () => { throw new Error('fetch failed'); }), /fetch failed/);
+  const calls = [];
+  assert.throws(() => verifyFreshMain('/repo', (cmd, args) => {
+    calls.push(args);
+    return args.includes('refs/heads/main') ? 'old' : 'new';
+  }), /Local main differs/);
+  assert.equal(calls.length, 3);
+  assert.equal(verifyFreshMain('/repo', () => 'same'), 'same');
+  assert.equal(verifyFreshMain('/repo', (cmd, args) => {
+    if (args.includes('refs/heads/main')) throw Object.assign(new Error('absent'), { status: 128 });
+    return 'remote';
+  }), 'remote');
 });

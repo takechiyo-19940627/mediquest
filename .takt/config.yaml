@@ -1,5 +1,6 @@
 language: ja
 base_branch: main
+auto_fetch: true
 concurrency: 2
 auto_pr: false
 draft_pr: true
