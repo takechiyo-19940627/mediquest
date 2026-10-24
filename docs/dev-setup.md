@@ -1,5 +1,8 @@
 # 開発環境セットアップ(2026-09-04)
 
+> ディレクトリ分割後、この資料の Rust・Dioxus の技術構成と開発手順は `learning-rust/` を対象とします。実用側の `app/` の技術は未選定です。
+> 開発コマンドは `learning-rust/` 内で実行してください。以下の `CLAUDE.md` は `learning-rust/CLAUDE.md` を指します。
+
 対象: macOS (Apple Silicon)、Doom Emacs(Emacs 30.2 / doom+ 26.06)、Rust stable。
 
 ## 1. Rust ツールチェーン(済)
