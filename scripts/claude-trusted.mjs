@@ -10,7 +10,7 @@ export const trustedSandbox = {
   filesystem: { disabled: false },
   network: {
     allowLocalBinding: true,
-    allowedDomains: ['registry.npmjs.org', 'github.com', 'objects.githubusercontent.com',
+    allowedDomains: ['registry.npmjs.org', 'storage.googleapis.com', 'github.com', 'objects.githubusercontent.com',
       'release-assets.githubusercontent.com', 'cdn.playwright.dev',
       'playwright.download.prss.microsoft.com', '127.0.0.1', 'localhost'],
   },
