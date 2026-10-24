@@ -1,3 +1,4 @@
+import { answerInput, gradeAnswer, itemState, statistics } from './answers';
 import { ReviewError } from '../review/input';
 import { and, eq, isNull } from 'drizzle-orm';
 import type { Connection } from '../../db/connection';
@@ -37,16 +38,18 @@ function items(db: Reader, id: number) {
     .all();
 }
 function summary(db: Reader, session: typeof studySessions.$inferSelect) {
-  const projected = items(db, session.id).map(({ item, questionStatus }) => ({
+  const rows = items(db, session.id);
+  const projected = rows.map(({ item, questionStatus }) => ({
     id: item.id,
     position: item.position,
-    state:
-      item.excludedAt !== null || questionStatus === 'stopped'
-        ? ('excluded' as const)
-        : item.answeredAt !== null
-          ? ('answered' as const)
-          : ('unanswered' as const),
+    state: itemState(item, questionStatus),
   }));
+  const stats = statistics(
+    rows.map(({ item, questionStatus }) => ({
+      state: itemState(item, questionStatus),
+      isCorrect: item.isCorrect,
+    })),
+  );
   return {
     id: session.id,
     setId: session.setId,
@@ -55,6 +58,7 @@ function summary(db: Reader, session: typeof studySessions.$inferSelect) {
     startedAt: session.startedAt,
     completedAt: session.completedAt,
     items: projected,
+    statistics: stats,
     currentItemId:
       projected.find((item) => item.state === 'unanswered')?.id ?? null,
   };
@@ -171,6 +175,54 @@ export function getSession(connection: Connection, id: number) {
     return summary(tx, owned(tx, id, userId));
   });
 }
+function itemRow(db: Reader, sessionId: number, itemId: number) {
+  const row = db
+    .select({
+      item: studyItems,
+      version: questionVersions,
+      questionStatus: questions.status,
+    })
+    .from(studyItems)
+    .innerJoin(
+      questionVersions,
+      eq(studyItems.questionVersionId, questionVersions.id),
+    )
+    .innerJoin(questions, eq(questionVersions.questionId, questions.id))
+    .where(and(eq(studyItems.sessionId, sessionId), eq(studyItems.id, itemId)))
+    .get();
+  if (!row) throw new StudyError('missing');
+  return row;
+}
+function itemDto(row: ReturnType<typeof itemRow>) {
+  if (itemState(row.item, row.questionStatus) === 'excluded')
+    return {
+      id: row.item.id,
+      position: row.item.position,
+      state: 'excluded' as const,
+    };
+  const base = {
+    id: row.item.id,
+    position: row.item.position,
+    body: row.version.body,
+    choices: row.version.choicesJson.map((choice) => ({
+      id: choice.id,
+      label: choice.label,
+    })),
+    requiredSelectionCount: row.version.answerIdsJson.length,
+  };
+  if (row.item.answeredAt === null) return base;
+  return {
+    ...base,
+    feedback: {
+      selectedIds: row.item.selectedIdsJson,
+      isCorrect: row.item.isCorrect,
+      answeredAt: row.item.answeredAt,
+      answerIds: row.version.answerIdsJson,
+      explanation: row.version.explanation,
+      quote: row.version.quote,
+    },
+  };
+}
 export function getStudyItem(
   connection: Connection,
   sessionId: number,
@@ -179,64 +231,116 @@ export function getStudyItem(
   return connection.db.transaction((tx) => {
     const userId = requireLocalLearner({ db: tx });
     owned(tx, sessionId, userId);
-    const row = tx
-      .select({
-        item: studyItems,
-        version: questionVersions,
-        questionStatus: questions.status,
-      })
-      .from(studyItems)
-      .innerJoin(
-        questionVersions,
-        eq(studyItems.questionVersionId, questionVersions.id),
-      )
-      .innerJoin(questions, eq(questionVersions.questionId, questions.id))
-      .where(
-        and(eq(studyItems.sessionId, sessionId), eq(studyItems.id, itemId)),
-      )
-      .get();
-    if (!row) throw new StudyError('missing');
-    if (row.item.excludedAt !== null || row.questionStatus === 'stopped')
-      return {
-        id: row.item.id,
-        position: row.item.position,
-        state: 'excluded' as const,
-      };
-    return {
-      id: row.item.id,
-      position: row.item.position,
-      body: row.version.body,
-      choices: row.version.choicesJson.map((choice) => ({
-        id: choice.id,
-        label: choice.label,
-      })),
-      requiredSelectionCount: row.version.answerIdsJson.length,
-    };
+    return itemDto(itemRow(tx, sessionId, itemId));
   });
+}
+type Writer = Pick<Connection['db'], 'select' | 'update'>;
+function syncProgress(tx: Writer, session: typeof studySessions.$inferSelect) {
+  const now = Date.now();
+  for (const { item, questionStatus } of items(tx, session.id))
+    if (
+      item.answeredAt === null &&
+      item.excludedAt === null &&
+      questionStatus === 'stopped'
+    )
+      tx.update(studyItems)
+        .set({ excludedReason: 'stopped', excludedAt: now })
+        .where(
+          and(
+            eq(studyItems.id, item.id),
+            isNull(studyItems.excludedAt),
+            isNull(studyItems.answeredAt),
+          ),
+        )
+        .run();
+  const state = summary(tx, session);
+  if (
+    state.statistics.unansweredEligibleCount === 0 &&
+    session.status === 'in_progress'
+  ) {
+    const completed = tx
+      .update(studySessions)
+      .set({ status: 'completed', completedAt: session.completedAt ?? now })
+      .where(
+        and(
+          eq(studySessions.id, session.id),
+          eq(studySessions.status, 'in_progress'),
+        ),
+      )
+      .returning()
+      .get();
+    if (!completed) throw new Error('storage');
+    return summary(tx, completed);
+  }
+  return state;
+}
+export function answerStudyItem(
+  connection: Connection,
+  sessionId: number,
+  itemId: number,
+  value: unknown,
+) {
+  return connection.db.transaction(
+    (tx) => {
+      const userId = requireLocalLearner({ db: tx });
+      const session = owned(tx, sessionId, userId);
+      const row = itemRow(tx, sessionId, itemId);
+      const input = answerInput(value);
+      if (row.item.answeredAt !== null) {
+        if (
+          !row.item.selectedIdsJson ||
+          JSON.stringify([...row.item.selectedIdsJson].sort()) !==
+            JSON.stringify(input.selectedIds)
+        )
+          throw new StudyError('conflict');
+        return {
+          item: itemDto(row),
+          session: summary(tx, session),
+          replayed: true,
+        };
+      }
+      if (
+        session.status !== 'in_progress' ||
+        itemState(row.item, row.questionStatus) === 'excluded'
+      )
+        throw new StudyError('conflict');
+      const isCorrect = gradeAnswer(
+        input.selectedIds,
+        row.version.choicesJson,
+        row.version.answerIdsJson,
+      );
+      const result = tx
+        .update(studyItems)
+        .set({
+          selectedIdsJson: input.selectedIds,
+          isCorrect,
+          answeredAt: Date.now(),
+        })
+        .where(
+          and(
+            eq(studyItems.id, itemId),
+            isNull(studyItems.answeredAt),
+            isNull(studyItems.excludedAt),
+          ),
+        )
+        .run();
+      if (result.changes !== 1) throw new StudyError('conflict');
+      const progress = syncProgress(tx, session);
+      return {
+        item: itemDto(itemRow(tx, sessionId, itemId)),
+        session: progress,
+        replayed: false,
+      };
+    },
+    { behavior: 'immediate' },
+  );
 }
 export function resumeSession(connection: Connection, id: number) {
   return connection.db.transaction(
     (tx) => {
       const userId = requireLocalLearner({ db: tx });
       const session = owned(tx, id, userId);
-      const now = Date.now();
-      for (const { item, questionStatus } of items(tx, id))
-        if (
-          item.answeredAt === null &&
-          item.excludedAt === null &&
-          questionStatus === 'stopped'
-        )
-          tx.update(studyItems)
-            .set({ excludedReason: 'stopped', excludedAt: now })
-            .where(
-              and(
-                eq(studyItems.id, item.id),
-                isNull(studyItems.excludedAt),
-                isNull(studyItems.answeredAt),
-              ),
-            )
-            .run();
-      return summary(tx, session);
+      return syncProgress(tx, session);
     },
     { behavior: 'immediate' },
   );

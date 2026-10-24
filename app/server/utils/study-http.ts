@@ -37,7 +37,7 @@ export async function studyEndpoint(
           message:
             error.code === 'missing'
               ? '演習または問題が見つかりません。'
-              : '演習を開始できません。現在の状態を確認してください。',
+              : '操作を保存できません。現在の状態を確認してください。',
         },
       };
     }

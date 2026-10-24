@@ -81,6 +81,7 @@ describe('study session HTTP', async () => {
         'completedAt',
         'items',
         'currentItemId',
+        'statistics',
       ].sort(),
     );
     const item = await (
@@ -190,8 +191,8 @@ describe('study session HTTP', async () => {
     );
     const first = await (await resume()).json();
     expect(first).toMatchObject({
-      status: 'in_progress',
-      completedAt: null,
+      status: 'completed',
+      completedAt: expect.any(Number),
       currentItemId: null,
     });
     const saved = f.c.client.prepare('select * from study_items').all();
