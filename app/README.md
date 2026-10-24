@@ -1,6 +1,6 @@
 # Mediquest アプリ基盤
 
-Nuxt / Vue / TypeScript と Nuxt UI を使った日本語の学習ホームです。教材がない空状態、ティール基調のライト・ダーク・OS連動テーマ、公開稼働確認APIを含みます。SQLiteのDB基盤を含みます。ローカル管理者向け教材・生成・確認・採用・明示公開APIを含みます。管理UI・演習UI・回答確定・外部認証・実AI検証は未対応です。演習画面のデザイン基準は今後合意します。
+Nuxt / Vue / TypeScript と Nuxt UI を使った日本語の学習ホームです。教材がない空状態、ティール基調のライト・ダーク・OS連動テーマ、公開稼働確認APIを含みます。SQLiteのDB基盤を含みます。ローカル管理者向け教材・生成・確認・採用・明示公開APIを含みます。本人限定の演習開始・回答確定・採点APIも含みます。管理UI・演習UI・外部認証・実AI検証は未対応です。演習画面のデザイン基準は今後合意します。
 
 ## 開発
 
@@ -139,7 +139,7 @@ TAKT #10の承認連携が未解決のため監督下の個別実装です。既
 
 ## 採用順序と明示公開API（Issue #24）
 
-管理者が確認済み候補の採用順を保存し、その集合を明示公開できます。公開後の本人限定演習開始/問題取得はIssue #28を参照してください。演習UI・回答確定は未実装です。公開メタデータの一覧/詳細はIssue #26の節を参照してください。管理UI、内容編集、公開停止、改訂・複製も対象外です。TAKT #10停止中の監督下実装で、演習画面の人による合意とは独立しています。
+管理者が確認済み候補の採用順を保存し、その集合を明示公開できます。公開後の本人限定演習開始/問題取得はIssue #28を参照してください。演習UIは未実装です。回答確定APIはIssue #30を参照してください。公開メタデータの一覧/詳細はIssue #26の節を参照してください。管理UI、内容編集、公開停止、改訂・複製も対象外です。TAKT #10停止中の監督下実装で、演習画面の人による合意とは独立しています。
 
 - `GET /api/admin/sets/:id`: candidatesとは別に採用順のitems（versionId/position/questionId/内容fingerprint/確認情報など）、revision、publishFingerprintを返します。
 - `PUT /api/admin/sets/:id/items`: `{ "expectedRevision": 0, "versionIds": [2, 1] }`。0〜10版を順番どおり全置換します。空集合もdraft保存可能です。確認済み・active・成功run由来の当該セット/教材の版のみ採用でき、版/論理問題の重複を拒否します。同じ現行集合なら再検証後に変更なしで200、異なる集合は期待revision一致時だけ保存してrevisionを1増やします。古い操作がABA後の集合を復活させる更新は行いません。
@@ -159,19 +159,33 @@ IMMEDIATE transactionで集合の置換・revision更新または公開記録を
 
 明示ローカルmode/socket/Host/Origin/no-storeは管理APIと共通です。固定ユーザーID 1がadminまたはlearnerなら閲覧可能ですが、learnerの管理API利用は引き続き403です。ID/roleをクライアントから指定する仕組みや匿名公開・外部認証はありません。これは本人PC用で、友人向けの外部配信を安全に行う認証ではありません。
 
-TAKT #10停止中の監督下実装です。UI・回答保存・履歴一覧は未実装で、canStartは現在の件数に基づく表示用情報です。開始APIはIssue #28を参照してください。不備判定は後続対応です。現行schemaにinvalidated_atはなく、不備確定・不備除外は未実装です。導入時はこの共通出題可能判定にも不備未確定条件を追加してください。
+TAKT #10停止中の監督下実装です。UI・履歴一覧は未実装で、canStartは現在の件数に基づく表示用情報です。開始APIはIssue #28を参照してください。不備判定は後続対応です。現行schemaにinvalidated_atはなく、不備確定・不備除外は未実装です。導入時はこの共通出題可能判定にも不備未確定条件を追加してください。
 
 ## 演習開始・固定出題・再取得（Issue #28）
 
-固定ローカル利用者（admin/learner）が公開セットから演習を開始できます。TAKT #10停止中の監督下実装で、UI・回答確定・採点・結果・履歴一覧・スキップ・復習は未実装です。本人PC用の既存socket/Host/Origin/no-store境界を使い、外部認証や利用者切替は追加しません。
+固定ローカル利用者（admin/learner）が公開セットから演習を開始できます。TAKT #10停止中の監督下実装で、UI・履歴一覧・スキップ・復習は未実装です。回答確定・採点・結果集計はIssue #30を参照してください。本人PC用の既存socket/Host/Origin/no-store境界を使い、外部認証や利用者切替は追加しません。
 
 - `POST /api/sessions`: UUIDのIdempotency-KeyとJSON `{ "setId": 1 }`。初回201、同一キー・同一セットは200で同じsession、異セットは409。別キーは別演習です。セット公開・現在の出題可能版/形式を開始transaction内で再確認し、0件なら409。未公開は404です。回答列はnullで作成します。
 - `GET /api/sessions/:sessionId`: 本人の概要と順序付きitems（id/position/state）、最初の取得可能な未回答currentItemIdを返します。保存した版と公開集合のpositionを固定し、再取得や再起動で並び替えません。現在の最新版へ差し替えず、ランダム化もしません。
-- `GET /api/sessions/:sessionId/items/:itemId`: 本人sessionに属する問題のid/position/body/choices/requiredSelectionCountだけを返します。選択肢IDは全選択肢を元の順序で返し、どれが正答かを示す配列・判定・解説・引用・教材・生成情報は返しません。HTMLはJSONの文字列であり、将来のUIでもv-htmlに渡しません。
+- `GET /api/sessions/:sessionId/items/:itemId`: 未回答の場合は、本人sessionに属する問題のid/position/body/choices/requiredSelectionCountだけを返します。選択肢IDは全選択肢を元の順序で返し、どれが正答かを示す配列・判定・解説・引用・教材・生成情報は返しません。HTMLはJSONの文字列であり、将来のUIでもv-htmlに渡しません。
 - `POST /api/sessions/:sessionId/resume`: 空JSON `{}`。未回答かつ現在stoppedの項目に除外理由stoppedと時刻を原子的に保存します。既存除外は上書きしません。同じ操作は冪等です。他人session/itemや別sessionのitemは不存在と同じ404です。
 
-GETは書込みをせず、現在停止または保存済み除外をstate=excludedとして投影します。該当itemのGETはid/position/stateのみ返し、問題を露出しません。resumeで保存した除外は後でactiveへ戻っても当該演習で維持します。全問除外でも履歴を削除せず、currentItemId=null、status=in_progressのまま返します。0点/0%や自動完了は導入しません。回答済み項目の除外保存は今回の対象外です。
+GETは書込みをせず、未回答の現在停止または保存済み除外をstate=excludedとして投影します。通常停止だけでは回答済み項目を除外しません。該当itemのGETはid/position/stateのみ返し、問題を露出しません。resumeで保存した除外は後でactiveへ戻っても当該演習で維持します。全問除外でも履歴を削除せず、currentItemId=nullを返します。Issue #30の回答/resume transactionで残り未回答が0ならcompletedへ更新します。対象0件の正答率は0%ではなくnullです。回答済み項目の除外保存は今回の対象外です。
 
 セット公開停止後も本人の既存演習と同一開始キー再送を保持し、新しい開始だけ拒否します。追加Drizzle移行はstudy_sessions/study_itemsと一意性/FK/状態制約を導入し、既存公開集合・教材・確認情報を保持します。途中item保存失敗時はsessionごとrollbackします。
 
-再取得はページ再読込/サーバー再起動と停止除外の保存までです。回答保存や完了済み演習の再開UIは完成していません。不備確定invalidated_atも未実装で、導入時にはcatalogと開始/再取得/再開の判定へ追加が必要です。
+再取得はページ再読込/サーバー再起動と停止除外の保存までです。回答保存APIは次節を参照してください。再開UIは未実装です。不備確定invalidated_atも未実装で、導入時にはcatalogと開始/再取得/再開の判定へ追加が必要です。
+
+## 回答確定・採点・本人feedback（Issue #30）
+
+`POST /api/sessions/:sessionId/items/:itemId/answer` に `{ "selectedIds": ["a"] }` を送ります。1〜6件の重複しないASCII選択肢ID（各40文字以内）だけを受け付け、未知フィールド・選択数の不足/超過・当該版にないIDは400です。固定版の正答と集合が完全一致した場合だけ正答で、部分点はありません。保存時にIDを並べ替えて正規化します。順不同の回答を禁止する制約はなく、最初の未回答以外も本人の取得可能itemなら確定できます。
+
+初回と同一集合の再送は200、異なる回答の再送は409です。応答はitem/session/replayed。同じ集合は初回選択・正誤・answeredAtを維持し、completed後も再送できます。保存済み回答を通常停止や公開停止のために再採点しません。未回答の停止/保存済み除外には409を返し、拒否操作では除外を書込みません。停止除外を保存する場合は明示的にresumeを呼びます。
+
+未回答GETは従来の問題DTOでfeedbackキーを持ちません。本人の確定済みitemだけfeedback（selectedIds/isCorrect/answeredAt/answerIds/explanation/quote）を追加します。再取得・サーバー再起動後も同じ保存結果を返します。他人や別sessionのitemは同じ404です。回答済みへの通常停止でもfeedbackを取得でき、明示的な保存済み除外は優先して問題を隠します。不備確定と過去回答の集計除外はまだ実装していません。
+
+回答保存・未回答stoppedの除外同期・session完了更新は同一IMMEDIATE transactionです。途中障害は全てrollbackし、安全な500だけを返します。resumeでも除外同期後に完了を判定します。未回答0件ならcompletedとcompletedAtを一度だけ保存し、再送/resumeで時刻を変更しません。GETは状態を投影するだけで更新しません。サーバーが返すcurrentItemIdは保存済みposition順の次の未回答であり、自動遷移や自動回答を実行しません。
+
+session.statisticsはtotalItemCount/excludedCount/eligibleCount/answeredEligibleCount/unansweredEligibleCount/correctEligibleCountを返します。accuracyは **correctEligibleCount / eligibleCount の0〜1比率** です。未回答は未正答として分母に含め、statusで未完了を区別します。対象0件はaccuracy=null・accuracyStatus=no_eligible_items、それ以外はaccuracyStatus=availableです。除外した行や過去回答は削除しません。丸めや点数表示は未実装のUIへ委ねます。
+
+schema/依存追加はありません。既存のローカル利用者/socket/Host/Origin/no-store、有限JSON受信、固定エラー境界を維持します。TAKT #10停止中の監督下実装で、UI・履歴一覧・スキップ・復習・不備確定・外部認証は対象外です。

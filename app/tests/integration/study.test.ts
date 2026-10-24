@@ -92,8 +92,8 @@ it('projects stopped without writes then explicitly persists exclusions once, in
   });
   f.c.client.exec("update questions set status='stopped'");
   expect(resumeSession(f.c, session.id)).toMatchObject({
-    status: 'in_progress',
-    completedAt: null,
+    status: 'completed',
+    completedAt: expect.any(Number),
     currentItemId: null,
   });
   expect(
