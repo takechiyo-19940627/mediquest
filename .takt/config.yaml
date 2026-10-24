@@ -1,6 +1,6 @@
 language: ja
 base_branch: main
-concurrency: 1
+concurrency: 2
 auto_pr: false
 draft_pr: true
 pipeline:
@@ -10,5 +10,6 @@ assistant:
     - AGENTS.md
     - app/AGENTS.md
     - docs/development-process.md
+    - agents/AGENTS.md
 workflow_command_gates:
   custom_scripts: true
