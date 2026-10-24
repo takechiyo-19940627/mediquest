@@ -70,6 +70,9 @@ export const questionSets = sqliteTable(
       onDelete: 'restrict',
     }),
     publishedAt: integer('published_at'),
+    revision: integer('revision').notNull().default(0),
+    publishRequestRevision: integer('publish_request_revision'),
+    publishRequestFingerprint: text('publish_request_fingerprint'),
     createdAt: integer('created_at').notNull(),
   },
   (table) => [
@@ -184,5 +187,24 @@ export const questionVersions = sqliteTable(
     ),
     check('question_version_positive_check', sql`${table.versionNo} >= 1`),
     check('question_quote_boolean_check', sql`${table.quoteVerified} IN (0,1)`),
+  ],
+);
+
+export const setItems = sqliteTable(
+  'set_items',
+  {
+    id: integer('id').primaryKey({ autoIncrement: true }),
+    setId: integer('set_id')
+      .notNull()
+      .references(() => questionSets.id, { onDelete: 'restrict' }),
+    questionVersionId: integer('question_version_id')
+      .notNull()
+      .references(() => questionVersions.id, { onDelete: 'restrict' }),
+    position: integer('position').notNull(),
+  },
+  (table) => [
+    unique('set_item_position_unique').on(table.setId, table.position),
+    unique('set_item_version_unique').on(table.setId, table.questionVersionId),
+    check('set_item_position_check', sql`${table.position} >= 0`),
   ],
 );
