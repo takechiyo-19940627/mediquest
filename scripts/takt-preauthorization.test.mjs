@@ -12,7 +12,7 @@ test('project preauthorization contains only fixed development and read commands
   }
   assert.match(config, /provider: claude/);
   assert.match(config, /allow_unsandboxed_commands: false/);
-  assert.match(read('.takt/workflows/mediquest-app.yaml'), /command: bash scripts\/app-command\.sh quality/);
+  assert.match(read('.takt/workflows/mediquest-app.yaml'), /command: bash scripts\/app-command\.sh host-quality/);
 });
 test('project SDK settings require sandbox availability and do not auto-approve all sandboxed Bash', () => {
   const settings = JSON.parse(read('.claude/settings.json'));

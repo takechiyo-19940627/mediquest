@@ -49,3 +49,28 @@ Issue36の実行で npm ci は成功したが、Chromium配布のリダイレク
 - 秘密を持たない公開記入例は `app/environment.example` に改名する。`.env` / `.env.*` のRead denyとsandbox denyReadはそのまま保持し、Gitの旧example例外も除く。READMEの参照だけ更新し、format走査や品質ゲートは除外しない。実際の秘密は `.env` 等に保存し、公開例へ記入しない。
 
 この修正の回帰は設定と公開例の契約のみを検査する。実ブラウザ導入・TAKT再実行は別の確認事項であり、この段階で成功とは扱わない。
+
+## レビュー前のhost品質証拠
+
+`mediquest-app` はimplement/fixの実装報告後、readonly reviewへ遷移する前に、hostの `app-command.sh host-quality` で既存の全7チェックを実行する。実装者はsandboxで実行不能な検証を成功扱いしないが、実装が完成している場合は制約を記録してdoneを返し、hostゲートへ進める。仕様・認証の進行不能は引き続き停止する。host失敗はTAKTが同じ工程へ返し、max_steps=12と監督の同一原因上限を維持する。
+
+証拠はGit管理外 `.takt/quality/latest.json` とattempt UUID別JSON/log。worktree実パス、Git管理対象と未追跡・非ignoreソースの内容/モード/リンクを含むSHA256、全7チェック名、開始/終了時刻、status、終了コード、log hashを保存する。起動直後に旧成功を無効化し、runtime不在・実行失敗・中断・検証中のソース変更は成功にしない。readonly reviewerは直前の証拠とlogを読み、attemptIdを報告に引用し、コードとテストを独立レビューする。finalizeでは再度全ビルドを繰り返さず、host verifierが現在ソース・worktree・logの一致と全7成功を検証する。内容が変われば最終ゲートは失敗し、監督が原因を調べて既存の再試行上限内で実装工程から全7と独立レビューを取り直す。新しいimplement/fixを通らず古いattemptを選択する操作はしない。
+
+host検証はClaude sandbox外の承認済み処理であり、workerにはhost-quality操作のBash許可を追加しない。`.takt`と制御scriptsの編集禁止も維持する。証拠は署名付き第三者証明ではなく、監督・CI・独立レビューを置き換えない。Git ignoreされた実データや依存展開物そのものはソースsnapshot対象ではなく、版固定lockfileと実行した検証を証拠に含める。
+
+TAKT0.49のcommandGateRunnerはHOME/NODENV_ROOTを渡さない。固定launcherはNODENV_ROOT未設定時のみシェルのユーザーホーム解決で `.nodenv` を選び、Node24.15.0を検証する。HOMEや秘密を含む親環境全体は復元しない。`check-takt-host-quality.mjs` は実commandGateRunner＋偽nodenvで、この環境とruntime失敗時の旧証拠無効化を検査する。実LLM・queue・アプリゲートは動かさない。
+
+## readonly最終ゲート失敗と版固定ローカルTAKT
+
+TAKT0.49.0のquality gate失敗はdoneルールより先に処理され、同じ工程へ戻る。readonly finalizeでは修復できず、fixルールを追加するだけでは遷移できない。このため `scripts/takt-local-patch.mjs` で**新しいローカルコピーだけ**に `readonly-quality-abort-v1` を適用する。グローバルインストールは変更しない。元package名/version=TAKT0.49.0と `WorkflowRunLoop.js` のSHA256を固定し、不一致・既存出力先には適用しない。コピーに元ソースとpatch markerを保存し、利用前に元hashと生成後hashを再検証する。異なる版への自動適用は禁止。
+
+patchは `step.edit === false` のgate失敗だけを、失敗snapshot保存後に `[readonly_quality_gate_failed]` 理由でabortする。edit:trueとedit未指定の既存再試行は変えない。連続runloopと単工程の両方で、通常gateと子工程から返る `qualityGateFailure` の4分岐を対象とする。このworkflowは並列stepを定義しない。実parallel orchestration自体の動作検証は範囲外で、共有runloopへの子失敗伝達を回帰で検査する。監督は停止原因を確認して既存上限内で実装修復・全7・独立レビューを取り直し、自動で失敗回数をリセットしない。
+
+準備と検証（live queueへ接続する前に独立レビューが必要）:
+
+```sh
+node scripts/takt-local-patch.mjs prepare /path/to/takt-0.49.0 /new/local/copy
+node scripts/check-takt-readonly-abort.mjs /new/local/copy
+```
+
+queue adapterは選択packageを検証してから読み込み、同じ実パスを `TAKT_PACKAGE_DIR` としてlauncherへ渡す。launcherも実行モードでは再検証する。未patchのglobal既定や改変コピーは実行を拒否する。診断doctor等は従来どおり実行できる。実行時にpatchを自動生成・適用しない。ローカルコピーへの準備と回帰はTAKT task/model/ネットワークを動かさない。

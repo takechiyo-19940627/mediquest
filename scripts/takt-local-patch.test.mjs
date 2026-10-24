@@ -1,0 +1,30 @@
+import test from 'node:test';
+import assert from 'node:assert/strict';
+import { mkdtempSync, mkdirSync, writeFileSync, readFileSync, rmSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
+import { prepareRuntime, verifyPatchedRuntime, patchedSource, target } from './takt-local-patch.mjs';
+test('patch rejects unknown source hash, version and existing destination without mutation', t => {
+  const root = mkdtempSync(join(tmpdir(), 'takt-patch-reject-'));
+  t.after(() => rmSync(root, { recursive: true, force: true }));
+  assert.throws(() => patchedSource('unexpected source'), /hash/);
+  const source = join(root, 'source'), dest = join(root, 'dest');
+  mkdirSync(source); mkdirSync(dest);
+  writeFileSync(join(source, 'package.json'), JSON.stringify({ name: 'takt', version: '9.0' }));
+  assert.throws(() => prepareRuntime(source, dest), /new/);
+  assert.throws(() => prepareRuntime(source, join(root, 'new')), /0.49.0/);
+  writeFileSync(join(source, 'package.json'), JSON.stringify({ name: 'takt', version: '0.49.0' }));
+  mkdirSync(join(source, 'dist/core/workflow/engine'), { recursive: true });
+  writeFileSync(join(source, target), 'unexpected source');
+  assert.throws(() => prepareRuntime(source, join(root, 'new')), /hash/);
+  assert.equal(readFileSync(join(source, target), 'utf8'), 'unexpected source');
+  assert.throws(() => verifyPatchedRuntime(source));
+});
+test('queue and execution launcher require the same verified installation', () => {
+  const queue = readFileSync(new URL('./takt-queue.mjs', import.meta.url), 'utf8');
+  const launcher = readFileSync(new URL('./takt.sh', import.meta.url), 'utf8');
+  assert(queue.includes('packageDir = verifyPatchedRuntime(resolve(packageDir))'));
+  assert(queue.includes('TAKT_PACKAGE_DIR: packageDir'));
+  assert(launcher.includes('scripts/takt-local-patch.mjs verify "${TAKT_PACKAGE_DIR:?'));
+  assert(launcher.includes('"$TAKT_PACKAGE_DIR/bin/takt"'));
+});

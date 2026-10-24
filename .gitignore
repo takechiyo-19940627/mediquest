@@ -18,3 +18,4 @@
 /.takt/supervisor/
 /.takt/supervisor-queue.lock/
 /.takt/supervisor-retries.json
+/.takt/quality/
