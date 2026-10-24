@@ -1,4 +1,5 @@
-import { and, desc, eq, lt, or, sql } from 'drizzle-orm';
+import { publicationState } from '../publication/state';
+import { and, desc, eq, lt, or, sql, isNotNull } from 'drizzle-orm';
 import type { Connection } from '../../db/connection';
 import {
   questionSets,
@@ -6,6 +7,7 @@ import {
   questions,
   generationRuns,
   sources,
+  setItems,
 } from '../../db/schema';
 import { requireAdministrator } from '../local-admin';
 import { validateGeneration } from '../generation/validation';
@@ -89,6 +91,7 @@ export function getSet(connection: Connection, id: number) {
       throw new ReviewError('conflict');
     return {
       ...set,
+      ...publicationState(tx, set),
       candidates: rows.map(({ version, source }) => ({
         id: version.id,
         questionId: version.questionId,
@@ -129,6 +132,18 @@ export function confirmVersion(
       const { version, question, run, source } = item;
       if (
         set.status !== 'draft' ||
+        set.publishedAt !== null ||
+        tx
+          .select({ id: setItems.id })
+          .from(setItems)
+          .innerJoin(questionSets, eq(setItems.setId, questionSets.id))
+          .where(
+            and(
+              eq(setItems.questionVersionId, versionId),
+              isNotNull(questionSets.publishedAt),
+            ),
+          )
+          .get() !== undefined ||
         run.status !== 'succeeded' ||
         question.status !== 'active' ||
         question.sourceId !== set.sourceId ||

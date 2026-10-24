@@ -5,7 +5,7 @@ import { reviewEndpoint } from '../../../utils/review-http';
 export default defineEventHandler((event) =>
   reviewEndpoint(event, () =>
     withSourceDatabase((connection) =>
-      getSet(connection, sourceId(getRouterParam(event, 'id'))),
+      getSet(connection, sourceId(getRouterParam(event, 'setId'))),
     ),
   ),
 );
