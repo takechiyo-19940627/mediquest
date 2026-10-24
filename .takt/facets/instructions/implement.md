@@ -1,1 +1,3 @@
 計画とIssueに沿って実装する。既存の規約・部品を優先し、learning-rustには触れない。必要なテストを追加し、bash scripts/app-command.sh quality を実行して失敗を修正する。検証はモックと一時DBを使い、実AI APIや本番データに接続しない。実行コマンドと結果を報告する。基盤Issueではapp/package.jsonにformat:check、lint、typecheck、test:unit、test:integration、test:e2e、buildを実効性のあるコマンドとして定義し、起動できるアプリとスモークテストを用意する。空の成功コマンド、テストなしの成功設定を使わない。品質ゲートやテスト期待値の変更はIssueの根拠とともに示す。コミット・push・PR・マージは行わない。
+
+実装が完成したら、sandboxで実行不能な検証は失敗・未確認として具体的に報告し、仕様・認証の進行不能と区別する。単なるsandboxの検証制約だけでblocked/ABORTにせずdoneの実装報告を返す。直後のhost全7ゲートが機械検証を行い、失敗なら同じ工程へフィードバックする。host結果を先取りして成功と言わない。既存max_stepsと同一原因の停止上限は維持する。

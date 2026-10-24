@@ -1,4 +1,5 @@
 #!/usr/bin/env node
+import { verifyPatchedRuntime } from './takt-local-patch.mjs';
 // Version-pinned adapter: all queue writers/runners must use this wrapper.
 import { mkdir, readFile, writeFile, rm, rename } from 'node:fs/promises';
 import { existsSync } from 'node:fs';
@@ -91,7 +92,7 @@ async function loadRunner(root) {
   if (!packageDir) {
     packageDir = discoverPackage(env);
   }
-  packageDir = resolve(packageDir);
+  packageDir = verifyPatchedRuntime(resolve(packageDir));
   const installed = JSON.parse(await readFile(join(packageDir, 'package.json'), 'utf8'));
   if (expected !== '0.49.0' || installed.version !== expected || installed.name !== 'takt') throw new Error('Queue adapter requires TAKT 0.49.0; audit adapter before upgrading');
   const { TaskStore } = await import(pathToFileURL(join(packageDir, 'dist/infra/task/store.js')).href);

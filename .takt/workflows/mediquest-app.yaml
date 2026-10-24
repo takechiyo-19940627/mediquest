@@ -42,6 +42,12 @@ steps:
         next: review
       - condition: 進行不能または仕様判断が必要
         next: ABORT
+    quality_gates:
+      - type: command
+        name: app-quality
+        command: bash scripts/app-command.sh host-quality
+        cwd: .
+        timeout_ms: 2400000
   - name: review
     persona: reviewer
     edit: false
@@ -71,6 +77,12 @@ steps:
         next: review
       - condition: 進行不能または同じ失敗を繰り返す
         next: ABORT
+    quality_gates:
+      - type: command
+        name: app-quality
+        command: bash scripts/app-command.sh host-quality
+        cwd: .
+        timeout_ms: 2400000
   - name: finalize
     persona: reviewer
     edit: false
@@ -82,13 +94,11 @@ steps:
     rules:
       - condition: 全ACの証拠と最終報告が揃った
         next: COMPLETE
-      - condition: 最終ゲートの失敗で実装修正が必要
-        next: fix
       - condition: 証拠不足または進行不能
         next: ABORT
     quality_gates:
       - type: command
         name: app-quality
-        command: bash scripts/app-command.sh quality
+        command: bash scripts/app-command.sh host-quality-verify
         cwd: .
         timeout_ms: 2400000
