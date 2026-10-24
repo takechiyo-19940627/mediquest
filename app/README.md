@@ -1,6 +1,6 @@
 # Mediquest アプリ基盤
 
-Nuxt / Vue / TypeScript と Nuxt UI を使った日本語の学習ホームです。教材がない空状態、ティール基調のライト・ダーク・OS連動テーマ、公開稼働確認APIを含みます。SQLiteのDB基盤を含みます。ローカル管理者向け教材・生成・確認・採用・明示公開APIを含みます。本人限定の演習開始・回答確定・採点APIも含みます。管理UI・演習UI・外部認証・実AI検証は未対応です。演習画面のデザイン基準は今後合意します。
+Nuxt / Vue / TypeScript と Nuxt UI を使った日本語の学習ホームです。教材がない空状態、ティール基調のライト・ダーク・OS連動テーマ、公開稼働確認APIを含みます。SQLiteのDB基盤を含みます。ローカル管理者向け教材・生成・確認・採用・明示公開APIを含みます。本人限定の演習開始・回答確定・採点・履歴一覧APIも含みます。管理UI・演習UI・履歴UI・外部認証・実AI検証は未対応です。演習画面のデザイン基準は今後合意します。
 
 ## 開発
 
@@ -159,11 +159,11 @@ IMMEDIATE transactionで集合の置換・revision更新または公開記録を
 
 明示ローカルmode/socket/Host/Origin/no-storeは管理APIと共通です。固定ユーザーID 1がadminまたはlearnerなら閲覧可能ですが、learnerの管理API利用は引き続き403です。ID/roleをクライアントから指定する仕組みや匿名公開・外部認証はありません。これは本人PC用で、友人向けの外部配信を安全に行う認証ではありません。
 
-TAKT #10停止中の監督下実装です。UI・履歴一覧は未実装で、canStartは現在の件数に基づく表示用情報です。開始APIはIssue #28を参照してください。版単位の不備確定・除外は Issue #34 を参照してください。
+TAKT #10停止中の監督下実装です。UIは未実装で、canStartは現在の件数に基づく表示用情報です。本人の履歴一覧APIは Issue #36 を参照してください。開始APIはIssue #28を参照してください。版単位の不備確定・除外は Issue #34 を参照してください。
 
 ## 演習開始・固定出題・再取得（Issue #28）
 
-固定ローカル利用者（admin/learner）が公開セットから演習を開始できます。TAKT #10停止中の監督下実装で、UI・履歴一覧・スキップ・復習は未実装です。回答確定・採点・結果集計はIssue #30を参照してください。本人PC用の既存socket/Host/Origin/no-store境界を使い、外部認証や利用者切替は追加しません。
+固定ローカル利用者（admin/learner）が公開セットから演習を開始できます。TAKT #10停止中の監督下実装で、UI・スキップ・復習は未実装です。回答確定・採点・結果集計はIssue #30、本人の履歴一覧はIssue #36を参照してください。本人PC用の既存socket/Host/Origin/no-store境界を使い、外部認証や利用者切替は追加しません。
 
 - `POST /api/sessions`: UUIDのIdempotency-KeyとJSON `{ "setId": 1 }`。初回201、同一キー・同一セットは200で同じsession、異セットは409。別キーは別演習です。セット公開・現在の出題可能版/形式を開始transaction内で再確認し、0件なら409。未公開は404です。回答列はnullで作成します。
 - `GET /api/sessions/:sessionId`: 本人の概要と順序付きitems（id/position/state）、最初の取得可能な未回答currentItemIdを返します。保存した版と公開集合のpositionを固定し、再取得や再起動で並び替えません。現在の最新版へ差し替えず、ランダム化もしません。
@@ -188,7 +188,7 @@ GETは書込みをせず、未回答の現在停止または保存済み除外�
 
 session.statisticsはtotalItemCount/excludedCount/eligibleCount/answeredEligibleCount/unansweredEligibleCount/correctEligibleCountを返します。accuracyは **correctEligibleCount / eligibleCount の0〜1比率** です。未回答は未正答として分母に含め、statusで未完了を区別します。対象0件はaccuracy=null・accuracyStatus=no_eligible_items、それ以外はaccuracyStatus=availableです。除外した行や過去回答は削除しません。丸めや点数表示は未実装のUIへ委ねます。
 
-schema/依存追加はありません。既存のローカル利用者/socket/Host/Origin/no-store、有限JSON受信、固定エラー境界を維持します。TAKT #10停止中の監督下実装で、UI・履歴一覧・スキップ・復習・外部認証は対象外です。不備確定は Issue #34 を参照してください。
+schema/依存追加はありません。既存のローカル利用者/socket/Host/Origin/no-store、有限JSON受信、固定エラー境界を維持します。TAKT #10停止中の監督下実装で、UI・スキップ・復習・外部認証は対象外です。不備確定は Issue #34、履歴一覧は Issue #36 を参照してください。
 
 ## 不備報告の受付と管理者確認（Issue 32）
 
@@ -215,3 +215,15 @@ GET は保存しません。resume / 新規回答成功の進捗同期では不�
 0006 は Drizzle 生成 SQL の旧表コピーで新規 nullable 列を明示 NULL に補正しています。参照される表を再作成するため移行専用接続で FK を一時停止し、全未適用移行と履歴を IMMEDIATE transaction 内で適用、全 FK 整合を確認してから commit します。失敗時は DDL・データ・履歴を rollback し、成功・失敗とも FK を復元します。アプリ稼働を止めて既存の移行コマンドを実行してください。
 
 TAKT #10 停止中の直接監督実装です。UI・通知・改訂・複製・全版停止・不備解除・スキップ・復習・外部認証は対象外です。
+
+## 本人限定の演習履歴・中断一覧（Issue #36）
+
+`GET /api/sessions` は固定ローカル利用者（admin/learner）本人の演習sessionだけを一覧します。利用者IDをクエリやボディで指定する仕組みはなく、adminも自分の履歴だけを取得し、learnerの管理API利用は引き続き403です。中断は新しい状態ではなく、既存の `in_progress` のまま一覧に現れます。
+
+- クエリは `limit`（既定20、最大100）、`status`（省略時は全件、`in_progress` / `completed` のみ）、`before`（応答の `nextCursor` をそのまま渡す）だけを受け付けます。未知フィールド・`userId` 等の利用者指定・同じクエリの重複・不正な値・他namespaceのcursorは400です。
+- 並び順は `startedAt` 降順、同時刻は `id` 降順で固定です。cursorは `study:<startedAt>:<id>` の専用namespaceで、ページまたぎの同一時刻でも欠落・重複しません。応答は `{ items, nextCursor }` で、該当なしは `items=[]` / `nextCursor=null` です。
+- 各itemは `id/setId/setTitle/status/mode/startedAt/completedAt/currentItemId/statistics` だけです。問題一覧・本文・選択肢・回答選択・正答・解説・引用・教材・生成情報・他人の情報は含みません。`setTitle` は現在のセット名で、タイトルのsnapshot列は追加していません。
+- `statistics` と `currentItemId` は個別GET（`GET /api/sessions/:sessionId`）と同じ集計定義を同じ時点で投影します。公開停止後やセットarchived後も本人の過去sessionを表示し、未回答の通常停止・不備版・保存済み除外は個別GETと同じく除外として集計します。全問が対象外の `in_progress` は一覧GETでも `in_progress` のまま `currentItemId=null`、`accuracy=null` / `accuracyStatus=no_eligible_items` です。完了への更新は従来どおり回答・resumeのtransactionだけが行います。
+- 一覧GETは書込みをしません。返したIDはそのまま既存の個別GET・resume・item取得に使えます。read transaction内で本人解決→対象ページのsession取得→そのページ分だけ進捗を投影し、全履歴をメモリへ読み込みません。`limit+1` で次ページ有無を判定します。
+
+schema/移行/依存の追加はありません。`study_sessions` は単一利用者・小規模データで、`user_id` が既存一意制約の先頭列にあるため、専用indexは実データ量の根拠が出るまで追加しません。既存のローカルmode/socket/Host/Origin/no-store/固定エラー境界を共有し、保存系の障害は安全な500だけを返します。並び順・status filter・limit/cursor形状・現在タイトル表示は Issue #36 の実装契約であり、プロダクト合意（画面一覧の `/history`・ホームの中断演習・UXの保存済み進捗からの再開）とは区別します。履歴UI・結果専用画面・検索/期間指定・総件数・履歴削除・バックアップ/復元は対象外です。
