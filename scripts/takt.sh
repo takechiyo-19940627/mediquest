@@ -21,4 +21,13 @@ if [[ "$actual" != "$expected" ]]; then
   echo "TAKT $expected is required (found: $actual). See .takt/README.md." >&2
   exit 1
 fi
+# Headless Claude inherits settings sources. Never silently broaden project preauthorization.
+for arg in "$@"; do
+  case "$arg" in
+    run|watch|--pipeline|--issue)
+      "${runtime_node[@]}" scripts/takt-preflight.mjs
+      break
+      ;;
+  esac
+done
 exec "${command[@]}" "$@"

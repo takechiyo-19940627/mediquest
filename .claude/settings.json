@@ -1,0 +1,74 @@
+{
+  "permissions": {
+    "disableBypassPermissionsMode": "disable",
+    "allow": [
+      "Read(./app/**)",
+      "Read(./docs/**)",
+      "Read(./agents/**)",
+      "Read(./AGENTS.md)",
+      "Read(./.takt/**)"
+    ],
+    "deny": [
+      "Read(./.env*)",
+      "Read(./app/.env*)",
+      "Read(~/.ssh/**)",
+      "Read(~/.aws/**)",
+      "Read(~/.claude/**)",
+      "Read(~/.codex/**)",
+      "Edit(./.claude/**)",
+      "Edit(./.takt/**)",
+      "Edit(./.git/**)",
+      "Edit(./.github/**)",
+      "Edit(./scripts/**)",
+      "Edit(./AGENTS.md)",
+      "Edit(./app/AGENTS.md)",
+      "Edit(./docs/**)",
+      "Edit(./agents/**)",
+      "Edit(./learning-rust/**)"
+    ]
+  },
+  "sandbox": {
+    "enabled": true,
+    "failIfUnavailable": true,
+    "autoAllowBashIfSandboxed": false,
+    "allowUnsandboxedCommands": false,
+    "excludedCommands": [],
+    "network": {
+      "allowLocalBinding": true,
+      "allowedDomains": [
+        "registry.npmjs.org",
+        "github.com",
+        "objects.githubusercontent.com",
+        "release-assets.githubusercontent.com",
+        "cdn.playwright.dev",
+        "playwright.download.prss.microsoft.com",
+        "127.0.0.1",
+        "localhost"
+      ]
+    },
+    "filesystem": {
+      "denyWrite": [
+        ".claude",
+        ".takt",
+        ".git",
+        ".github",
+        "scripts",
+        "AGENTS.md",
+        "app/AGENTS.md",
+        "docs",
+        "agents",
+        "learning-rust"
+      ],
+      "denyRead": [
+        ".env",
+        "app/.env",
+        "~/.ssh",
+        "~/.aws",
+        "~/.claude",
+        "~/.codex",
+        ".env.*",
+        "app/.env.*"
+      ]
+    }
+  }
+}

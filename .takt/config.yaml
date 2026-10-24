@@ -13,3 +13,28 @@ assistant:
     - agents/AGENTS.md
 workflow_command_gates:
   custom_scripts: true
+
+provider: claude
+provider_options:
+  claude:
+    allowed_tools:
+      - "Bash(bash scripts/app-command.sh ci)"
+      - "Bash(bash scripts/app-command.sh format)"
+      - "Bash(bash scripts/app-command.sh format:check)"
+      - "Bash(bash scripts/app-command.sh lint)"
+      - "Bash(bash scripts/app-command.sh typecheck)"
+      - "Bash(bash scripts/app-command.sh test:unit)"
+      - "Bash(bash scripts/app-command.sh test:integration)"
+      - "Bash(bash scripts/app-command.sh test:e2e)"
+      - "Bash(bash scripts/app-command.sh build)"
+      - "Bash(bash scripts/app-command.sh dev)"
+      - "Bash(bash scripts/app-command.sh browser:install)"
+      - "Bash(bash scripts/app-command.sh quality)"
+      - "Bash(bash scripts/app-command.sh versions)"
+      - "Bash(git status --short)"
+      - "Bash(git diff --check)"
+      - "Bash(git diff --stat)"
+      - "Bash(git diff)"
+    sandbox:
+      allow_unsandboxed_commands: false
+      excluded_commands: []
