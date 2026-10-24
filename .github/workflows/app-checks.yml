@@ -1,0 +1,30 @@
+name: App checks
+on:
+  pull_request:
+  push:
+    branches: [main]
+permissions:
+  contents: read
+jobs:
+  app-checks:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: app/.node-version
+          cache: npm
+          cache-dependency-path: app/package-lock.json
+      - run: test "$(npm --version)" = "11.12.1"
+      - run: npm ci
+        working-directory: app
+      - run: npm exec -- playwright install --with-deps chromium
+        working-directory: app
+      - run: node scripts/check-app.mjs
+      - uses: actions/upload-artifact@v4
+        if: failure()
+        with:
+          name: browser-failure
+          path: app/test-results
+          if-no-files-found: ignore

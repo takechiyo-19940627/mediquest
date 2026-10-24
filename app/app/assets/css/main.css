@@ -1,0 +1,16 @@
+@import 'tailwindcss';
+@import '@nuxt/ui';
+
+@theme {
+  --font-sans: system-ui, sans-serif;
+}
+
+body {
+  margin: 0;
+  line-height: 1.75;
+}
+
+:focus-visible {
+  outline: 3px solid var(--ui-primary);
+  outline-offset: 4px;
+}

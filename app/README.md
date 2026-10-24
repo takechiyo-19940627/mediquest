@@ -1,20 +1,53 @@
-# 実用アプリ
+# Mediquest アプリ基盤
 
-アイデアを早く動く形にして、実際に使うための開発ディレクトリです。
+Nuxt / Vue / TypeScript と Nuxt UI を使った日本語の学習ホームです。教材がない空状態、ティール基調のライト・ダーク・OS連動テーマ、公開稼働確認APIを含みます。DB・認証・AI・教材操作は未実装です。演習画面のデザイン基準は今後合意します。
 
-Nuxt / Vue + TypeScript と UI ライブラリの Nuxt UI を採用し、バックエンドも Nuxt のサーバー機能で実装します。Node.js 上でまずローカルの Web アプリとして利用し、将来はリモートサーバーへの移行、必要に応じたアプリ化を検討します。
+## 開発
 
-デザインはティールを基調とし、ライト・ダークの両テーマに対応します。
+Node **24.15.0** / npm **11.12.1** を使用します。nodenv利用時はこのディレクトリで `nodenv exec npm` を使ってください。依存はpackage-lock.jsonで固定しています。
 
-詳細は [実用アプリの技術方針](../docs/app-architecture.md) を参照してください。DB は SQLite、DB アクセスは Drizzle ORM、マイグレーションは Drizzle Kit を採用します。実装や依存関係はまだ追加していません。
-機能要件は [要求定義](../docs/requirements.md) を参考にします。
+```sh
+npm ci
+npm exec -- playwright install chromium
+npm run dev
+```
 
-UI 実装時は [UI ガイド](../docs/ui-guidelines.md) を参照してください。
+開発サーバーは127.0.0.1に限定します。インストール時にはNuxtの型生成が実行されます。
 
-教材登録と AI による問題生成は管理者ページで行い、管理者が内容に責任を持ちます。学習者は管理者が用意した問題で演習します。
+## 検証
 
-演習・中断再開・管理者による公開・不備報告のルールは [UX 方針](../docs/ux-guidelines.md) を参照してください。
+```sh
+npm run format
+npm run format:check
+npm run lint
+npm run typecheck
+npm run test:unit
+npm run test:integration
+npm run test:e2e
+npm run build
+```
 
-初期版の対象画面とデータ構造は [画面一覧・DB設計](../docs/screens-and-data-model.md) を参照してください。
+リポジトリルートから全検証を実行する場合:
 
-Issue・TAKT・検証・レビュー・PRの進め方は [開発プロセス](../docs/development-process.md) を参照してください。TAKT専用workflowと検証ゲートは整備済みです。実行方法は [TAKT設定](../.takt/README.md) を参照してください。アプリ本体とそのCIは未構築です。
+```sh
+NODENV_VERSION=24.15.0 nodenv exec node scripts/check-app.mjs
+```
+
+CIも同じゲートを実行します。単体テストはhealth応答に環境情報を含めない契約、結合テストは実HTTP APIと日本語SSR、ブラウザテストは本番ビルドのホーム・テーマ保存・OS追従・キーボード操作・スマホ/PCの横溢れを検証します。ブラウザテストは専用サーバーを起動し、既存サーバーを再利用しません。各テーマの画面をtest-resultsに保存します。フォントはsystem-uiとし、Nuxt UIのフォント取得を無効化しています。
+
+## 本番ビルドのローカル確認
+
+```sh
+npm run build
+NITRO_HOST=127.0.0.1 NITRO_PORT=3100 npm run start
+```
+
+`/api/health` はプロセスの稼働確認です。DB接続等のreadinessは保証しません。リモート公開の運用・認証は今後の実装です。
+
+## 依存監査の残課題
+
+2026-10-24のnpm auditは8件（high 7、low 1）を報告しています。high 7件はlisthen経由のnode-forgeの署名検証問題から伝播したもので、独立した7つの問題ではありません。node-forge最新版1.4.0にも修正がなく、現在のHTTP起動経路で署名検証を使用する証拠は見つかっていません。生成した本番サーバーの依存一覧にもnode-forge/listhenは含まれていませんが、上流修正の追跡が必要です。[署名検証のadvisory](https://github.com/advisories/GHSA-86w9-cpqp-85rv)
+
+lowはesbuildのWindows開発サーバーに関する問題です。今回のmacOS上の検証には該当しません。fontlessの要求範囲を越える強制更新は行っていません。[esbuildのadvisory](https://github.com/advisories/GHSA-g7r4-m6w7-qqqr)
+
+GitHubの必須チェック登録と、TAKTからのIssue→PRの通し運転は別途確認が必要です。
