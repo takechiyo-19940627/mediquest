@@ -28,7 +28,7 @@ bash scripts/takt.sh --issue 123 --workflow mediquest-app
 bash scripts/takt.sh --pipeline --issue 123 --workflow mediquest-app   --branch codex/issue-123 --auto-pr --draft
 ```
 
-PRは明示指定時にのみ作成する。マージは人が行う。未コミットのローカル変更を入力として勝手に取り込ませない。
+PRは明示指定時にのみ作成する。マージは `../agents/roles/integrator.md` の条件を満たした監督者、または人が行う。未コミットのローカル変更を入力として勝手に取り込ませない。
 
 ## フロー
 
@@ -63,3 +63,27 @@ PRは明示指定時にのみ作成する。マージは人が行う。未コミ
 `.github/workflows/process-checks.yml` はゲート自身のテストとラッパーの構文を確認する。アプリのCIではない。
 TAKT workflowは0.49.0の `workflow doctor` で検証済み。実プロバイダーによるIssueからPRまでの試行、アプリCI、GitHub必須チェック・権限の設定は後続。
 チェック設定もAIが編集できるため、これだけで改変に対する強制力を保証しない。CIの独立実行・保護設定・人による設定差分の確認を組み合わせる。
+
+## 自律運用
+
+監督手順は [agents/AGENTS.md](../agents/AGENTS.md)。同時実装は最大2タスク、TAKT実行プロセスは1つ。queueの変更とrunをロック付きアダプターで直列化する。実行中のqueueには追加しない。
+
+### キュー操作（TAKT 0.49.0専用）
+
+```sh
+node scripts/takt-queue.mjs inspect
+node scripts/takt-queue.mjs enqueue-issue /tmp/mediquest-issue.json
+node scripts/takt-queue.mjs run
+node scripts/takt-queue.mjs retry TASK_NAME /tmp/mediquest-investigation.md
+node scripts/takt-queue.mjs enqueue-pr /tmp/mediquest-pr-review.json
+```
+
+Issue JSONは `gh issue view N --json number,title,body,state` の結果。レビュー修正JSONは監督者が同一repoの最新PRから取得した `number/title/state/isCrossRepository/headRefOid/headRefName/baseRefName` と、`body` に具体的な修正指示、`reviewFingerprint` にコメントID・更新日時・head SHAから計算したSHA256を設定する。受け入れたPRのheadが変わっていないか実行前にも確認する。
+
+追加・再試行・runは共通ロックで排他。inspectは実行中も読み取り可能。生の `takt add/run/watch` と同時に使わない。pending上限2、再試行は初回を含む合計3回、pr_failedは再生成せずPR公開だけ復旧する。
+`.takt/supervisor-queue.lock/owner.json` を残したプロセスが死んだ場合は、実行コマンド・開始時刻・子プロセス・queueを照合してから監督者が復旧する。ロックを無条件に削除しない。
+TAKT内部APIの利用を0.49.0に固定している。更新やローカルforkには互換テストが必要。`TAKT_PACKAGE_DIR` を指定すると、queue操作と実行の両方で同じインストールを使う。
+
+### 定期監督
+
+Codexのこのタスクに30分間隔のheartbeat「Mediquest 自律開発監督」を設定済み。監督者が役割指示を読み、状態確認・改善・新規投入・条件付きマージを行う。PC/Codexが動いており、GitHubとTAKTの認証が利用できることが前提。常時サーバーとしての稼働は保証しない。

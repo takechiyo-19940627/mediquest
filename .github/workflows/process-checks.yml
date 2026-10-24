@@ -18,4 +18,4 @@ jobs:
       - name: Validate launcher syntax
         run: bash -n scripts/takt.sh
       - name: Test quality gate
-        run: node --test scripts/check-app.test.mjs
+        run: node --test scripts/*.test.mjs

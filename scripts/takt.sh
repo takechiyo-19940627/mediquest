@@ -3,14 +3,22 @@ set -euo pipefail
 repo_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 cd "$repo_root"
 # Select an existing TAKT runtime for this process only; never change nodenv global.
+runtime_node=(node)
 if command -v nodenv >/dev/null 2>&1; then
   export NODENV_VERSION="${TAKT_NODE_VERSION:-20.19.0}"
+  runtime_node=(nodenv exec node)
 fi
 export NO_UPDATE_NOTIFIER=1
 expected="$(cat .takt/version)"
-actual="$(takt --version)"
+if [[ -n "${TAKT_PACKAGE_DIR:-}" ]]; then
+  # Queue adapter and actual execution must use the same reviewed installation.
+  command=("${runtime_node[@]}" "$TAKT_PACKAGE_DIR/bin/takt")
+else
+  command=(takt)
+fi
+actual="$("${command[@]}" --version)"
 if [[ "$actual" != "$expected" ]]; then
   echo "TAKT $expected is required (found: $actual). See .takt/README.md." >&2
   exit 1
 fi
-exec takt "$@"
+exec "${command[@]}" "$@"
