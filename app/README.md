@@ -56,7 +56,7 @@ GitHubの必須チェック登録と、TAKTからのIssue→PRの通し運転は
 
 DB基盤はDrizzle ORM/Kitとbetter-sqlite3を使用します。現在はusers/sourcesのみで、画面やAPIへの教材操作は未接続です。接続はserver/db内で明示作成し、使用後にcloseします。接続ごとに外部キー制約を有効にします。
 
-`MEDIQUEST_DB_PATH` にリポジトリ外の絶対パスを指定し、親ディレクトリを先に用意してください。`.env.example` は記入例です。以下のCLIは.envを自動読込みしません。
+`MEDIQUEST_DB_PATH` にリポジトリ外の絶対パスを指定し、親ディレクトリを先に用意してください。`environment.example` は記入例です。以下のCLIは.envを自動読込みしません。
 
 ```sh
 npm run db:generate

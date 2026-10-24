@@ -6,7 +6,6 @@ playwright-report/
 test-results/
 .env
 .env.*
-!.env.example
 
 *.sqlite
 *.sqlite-wal

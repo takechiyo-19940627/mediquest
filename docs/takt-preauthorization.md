@@ -39,3 +39,13 @@ bash scripts/takt.sh workflow doctor .takt/workflows/mediquest-app.yaml
 [公式 filesystem isolation の説明](https://code.claude.com/docs/en/sandboxing#which-settings-can-disable-it) に沿って、preflightは継承された `sandbox.filesystem.disabled:true` も起動前に拒否する。ユーザー設定を自動修正せず、該当設定の見直しが必要なことを報告する。管理設定優先の制約や未知の設定注入まで上書きできる保証はしない。
 
 回帰は実TAKTのCLIパスresolver→headless client→wrapper→偽CLIまで接続し、trusted scopeの通信設定と従来のコマンド許可・読み取り工程の制限が保持されることを確認する。ネットワークを実際に通す試験ではない。Issue36の失敗履歴や作業ツリーは保持し、この修正段階ではTAKT再実行・拒否された依存導入の再試行を行わない。
+
+## ブラウザ配布先と公開設定例
+
+Issue36の実行で npm ci は成功したが、Chromium配布のリダイレクト先と `.env.example` の読取りが拒否された。拒否を別コマンドで回避せず、以下を独立した設定修正として扱う。
+
+- Playwrightはlockfileで1.64.1を固定。導入済み同版の `playwright-core/browsers.json` はChromium revision1248 / Chrome for Testing156.0.8078.4を指定し、`lib/coreBundle.js` の `cftUrl` は `https://cdn.playwright.dev/builds/cft/<version>/<platform>/<archive>` を構成する。実行ログで `storage.googleapis.com:443` へのredirect拒否を確認した。[Google公式Chrome for Testing配布情報](https://github.com/GoogleChromeLabs/chrome-for-testing) の配布先は `https://storage.googleapis.com/chrome-for-testing-public/<version>/...`。この完全一致ホストをprojectとtrusted CLI双方へ追加する。ワイルドカードや別mirrorは追加しない。
+- sandboxの `allowedDomains` はホスト単位であり、同ホストのbucket/pathまでは制限しない。Chromeのarchiveだけに技術的に限定できたとは主張しない。許可済み固定 `browser:install` と版固定依存を使い、任意ダウンロードコマンドは追加しない。[Playwright公式導入資料](https://playwright.dev/docs/browsers) のdownload host overrideは使用しない。
+- 秘密を持たない公開記入例は `app/environment.example` に改名する。`.env` / `.env.*` のRead denyとsandbox denyReadはそのまま保持し、Gitの旧example例外も除く。READMEの参照だけ更新し、format走査や品質ゲートは除外しない。実際の秘密は `.env` 等に保存し、公開例へ記入しない。
+
+この修正の回帰は設定と公開例の契約のみを検査する。実ブラウザ導入・TAKT再実行は別の確認事項であり、この段階で成功とは扱わない。
