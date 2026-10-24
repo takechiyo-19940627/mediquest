@@ -208,3 +208,68 @@ export const setItems = sqliteTable(
     check('set_item_position_check', sql`${table.position} >= 0`),
   ],
 );
+
+export const studySessions = sqliteTable(
+  'study_sessions',
+  {
+    id: integer('id').primaryKey({ autoIncrement: true }),
+    userId: integer('user_id')
+      .notNull()
+      .references(() => users.id, { onDelete: 'restrict' }),
+    setId: integer('set_id')
+      .notNull()
+      .references(() => questionSets.id, { onDelete: 'restrict' }),
+    status: text('status', { enum: ['in_progress', 'completed'] }).notNull(),
+    mode: text('mode', { enum: ['normal'] }).notNull(),
+    startRequestKey: text('start_request_key').notNull(),
+    startedAt: integer('started_at').notNull(),
+    completedAt: integer('completed_at'),
+  },
+  (table) => [
+    unique('study_session_user_request_unique').on(
+      table.userId,
+      table.startRequestKey,
+    ),
+    check(
+      'study_session_status_check',
+      sql`${table.status} IN ('in_progress','completed')`,
+    ),
+    check('study_session_mode_check', sql`${table.mode} = 'normal'`),
+  ],
+);
+export const studyItems = sqliteTable(
+  'study_items',
+  {
+    id: integer('id').primaryKey({ autoIncrement: true }),
+    sessionId: integer('session_id')
+      .notNull()
+      .references(() => studySessions.id, { onDelete: 'restrict' }),
+    questionVersionId: integer('question_version_id')
+      .notNull()
+      .references(() => questionVersions.id, { onDelete: 'restrict' }),
+    position: integer('position').notNull(),
+    selectedIdsJson: text('selected_ids_json', { mode: 'json' }).$type<
+      string[]
+    >(),
+    isCorrect: integer('is_correct', { mode: 'boolean' }),
+    answeredAt: integer('answered_at'),
+    excludedReason: text('excluded_reason', { enum: ['stopped'] }),
+    excludedAt: integer('excluded_at'),
+  },
+  (table) => [
+    unique('study_item_position_unique').on(table.sessionId, table.position),
+    unique('study_item_version_unique').on(
+      table.sessionId,
+      table.questionVersionId,
+    ),
+    check('study_item_position_check', sql`${table.position} >= 0`),
+    check(
+      'study_item_correct_check',
+      sql`${table.isCorrect} IS NULL OR ${table.isCorrect} IN (0,1)`,
+    ),
+    check(
+      'study_item_excluded_check',
+      sql`(${table.excludedReason} IS NULL AND ${table.excludedAt} IS NULL) OR (${table.excludedReason} IS NOT NULL AND ${table.excludedReason} = 'stopped' AND ${table.excludedAt} IS NOT NULL)`,
+    ),
+  ],
+);
