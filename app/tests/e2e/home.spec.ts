@@ -78,3 +78,29 @@ test('production output excludes the fixed preview question text', () => {
   inspect('.output/public');
   inspect('.output/server');
 });
+
+test('production excludes test transport and browser generation secrets', () => {
+  function inspect(directory: string, browser: boolean) {
+    for (const entry of readdirSync(directory, { withFileTypes: true })) {
+      const path = join(directory, entry.name);
+      if (entry.isDirectory()) inspect(path, browser);
+      else if (/\.(m?js|json|html|map)$/.test(entry.name)) {
+        const content = readFileSync(path, 'utf8');
+        for (const marker of [
+          'TEST_ONLY_GENERATION_TRANSPORT_MARKER',
+          'TEST_GENERATION_EVENTS',
+          'SCENARIO_PENDING',
+        ])
+          expect(content, path).not.toContain(marker);
+        if (browser)
+          for (const marker of [
+            'ANTHROPIC_API_KEY',
+            'api.anthropic.com/v1/messages',
+          ])
+            expect(content, path).not.toContain(marker);
+      }
+    }
+  }
+  inspect('.output/public', true);
+  inspect('.output/server', false);
+});
