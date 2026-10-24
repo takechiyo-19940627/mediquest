@@ -32,7 +32,7 @@ export function issueOptions(issue, workflow = 'mediquest-app') {
   return {
     slug: `issue-${issue.number}`, summary: issue.title,
     workflow, worktree: true, branch: `codex/issue-${issue.number}`,
-    base_branch: 'origin/main', issue: issue.number, source: 'issue',
+    base_branch: 'main', issue: issue.number, source: 'issue',
     auto_pr: true, draft_pr: true,
   };
 }
@@ -56,6 +56,26 @@ export function retryAttempt(task, attempts) {
   return used + 1;
 }
 
+// Repair only the legacy value emitted by this adapter, under its queue lock.
+export function repairLegacyIssueBase(store, name) {
+  return store.update(state => ({ ...state, tasks: state.tasks.map(task => {
+    if (task.name !== name || task.source !== 'issue' || task.base_branch !== 'origin/main') return task;
+    if (!['failed', 'exceeded'].includes(task.status)) throw new Error('Legacy base repair requires a failed/exceeded task');
+    return { ...task, base_branch: 'main' };
+  }) }));
+}
+
+export function verifyFreshMain(root, execute = execFileSync) {
+  const options = { cwd: root, encoding: 'utf8', stdio: 'pipe' };
+  execute('git', ['fetch', 'origin', '+refs/heads/main:refs/remotes/origin/main'], options);
+  const remote = execute('git', ['rev-parse', '--verify', 'refs/remotes/origin/main'], options).trim();
+  let local;
+  try { local = execute('git', ['rev-parse', '--verify', 'refs/heads/main'], options).trim(); }
+  catch (error) { if (error.status !== 128) throw error; }
+  if (local && local !== remote) throw new Error('Local main differs from fetched origin/main; reconcile safely before run');
+  return remote;
+}
+
 export function discoverPackage(env, execute = execFileSync) {
   let hasNodenv = true;
   try { execute('nodenv', ['--version'], { env, stdio: 'pipe' }); }
@@ -74,6 +94,7 @@ async function loadRunner(root) {
   packageDir = resolve(packageDir);
   const installed = JSON.parse(await readFile(join(packageDir, 'package.json'), 'utf8'));
   if (expected !== '0.49.0' || installed.version !== expected || installed.name !== 'takt') throw new Error('Queue adapter requires TAKT 0.49.0; audit adapter before upgrading');
+  const { TaskStore } = await import(pathToFileURL(join(packageDir, 'dist/infra/task/store.js')).href);
   const { TaskRunner } = await import(pathToFileURL(join(packageDir, 'dist/infra/task/runner.js')).href);
   const { TasksFileSchema } = await import(pathToFileURL(join(packageDir, 'dist/infra/task/schema.js')).href);
   const { parse } = await import(pathToFileURL(join(packageDir, 'node_modules/yaml/dist/index.js')).href);
@@ -81,7 +102,7 @@ async function loadRunner(root) {
     const file = join(root, '.takt/tasks.yaml');
     return existsSync(file) ? TasksFileSchema.parse(parse(await readFile(file, 'utf8'))) : { tasks: [] };
   };
-  return { runner: new TaskRunner(root), snapshot, packageDir };
+  return { runner: new TaskRunner(root), store: new TaskStore(root), snapshot, packageDir };
 }
 
 export async function main(args, root = resolve(dirname(fileURLToPath(import.meta.url)), '..')) {
@@ -95,7 +116,7 @@ export async function main(args, root = resolve(dirname(fileURLToPath(import.met
     return;
   }
   return withQueueLock(root, async () => {
-    const { runner, snapshot, packageDir } = await loadRunner(root);
+    const { runner, store, snapshot, packageDir } = await loadRunner(root);
     const before = await snapshot();
     // Fail closed for manual TAKT processes that did not acquire our lock.
     if (command !== 'inspect' && before.tasks.some(task => task.status === 'running')) throw new Error('Existing running task requires reconciliation before queue mutation/run');
@@ -113,6 +134,7 @@ export async function main(args, root = resolve(dirname(fileURLToPath(import.met
       Object.defineProperty(state.attempts, file, { value: attempt, writable: true, enumerable: true, configurable: true });
       const temp = `${stateFile}.${process.pid}.tmp`;
       await writeFile(temp, JSON.stringify(state, null, 2)); await rename(temp, stateFile);
+      repairLegacyIssueBase(store, file);
       runner.requeueTask(file, ['failed', 'exceeded'], undefined, note);
       console.log(JSON.stringify({ requeued: file, attempt }));
       return;
@@ -133,6 +155,8 @@ export async function main(args, root = resolve(dirname(fileURLToPath(import.met
       console.log(JSON.stringify({ enqueued: task.name, issue: issue.number }));
       return;
     }
+    // TAKT falls back to local refs if its own fetch fails; both must be fresh.
+    if (pending > 0) verifyFreshMain(root);
     const code = await new Promise((resolveExit, reject) => {
       const child = spawn('bash', ['scripts/takt.sh', 'run'], { cwd: root, stdio: 'inherit', env: { ...process.env, TAKT_PACKAGE_DIR: packageDir } });
       // Retain lock until child exits even if supervisor is interrupted.

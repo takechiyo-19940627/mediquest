@@ -87,3 +87,10 @@ TAKT内部APIの利用を0.49.0に固定している。更新やローカルfork
 ### 定期監督
 
 Codexのこのタスクに30分間隔のheartbeat「Mediquest 自律開発監督」を設定済み。監督者が役割指示を読み、状態確認・改善・新規投入・条件付きマージを行う。PC/Codexが動いており、GitHubとTAKTの認証が利用できることが前提。常時サーバーとしての稼働は保証しない。
+
+### ベースブランチと既存失敗の復旧
+
+Issueの`base_branch`はブランチ名`main`を指定する。TAKT 0.49.0は`origin/main`などのremote-tracking refを拒否する。
+旧アダプターが投入した`origin/main`で失敗したIssueは、調査メモを添えた通常の`retry`で復旧する。共通ロック内でTAKTのTaskStoreを使い、対象タスクのベース名だけを`main`へ修正してから再投入する。Issue・タスク名・失敗履歴を維持し、再試行回数上限も適用する。queueを直接編集しない。
+
+`run`前に`origin/main`をfetchし、失敗時は起動しない。ローカル`main`が存在する場合は取得したrefと一致することも要求する。TAKT内の再fetchが失敗しても古いローカルmainへフォールバックさせないためである。古いmainがある場合は監督者が他のworktreeで使われていないこと・祖先関係を確認し、fast-forwardのみで更新してから再開する。ユーザーの変更をresetで消さない。TAKTの`auto_fetch`はグローバル設定専用のため、プロジェクト設定には追加しない。
