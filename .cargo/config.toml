@@ -1,0 +1,5 @@
+# C 依存クレート(aws-lc-sys, libsqlite3-sys など)のビルドに Apple の clang を使う。
+# シェルに CC=gcc-16 のような設定が残っていても壊れないよう force で上書きする。
+[env]
+CC = { value = "/usr/bin/clang", force = true }
+CXX = { value = "/usr/bin/clang++", force = true }
