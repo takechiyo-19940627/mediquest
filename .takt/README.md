@@ -93,4 +93,4 @@ Codexのこのタスクに30分間隔のheartbeat「Mediquest 自律開発監督
 Issueの`base_branch`はブランチ名`main`を指定する。TAKT 0.49.0は`origin/main`などのremote-tracking refを拒否する。
 旧アダプターが投入した`origin/main`で失敗したIssueは、調査メモを添えた通常の`retry`で復旧する。共通ロック内でTAKTのTaskStoreを使い、対象タスクのベース名だけを`main`へ修正してから再投入する。Issue・タスク名・失敗履歴を維持し、再試行回数上限も適用する。queueを直接編集しない。
 
-`run`前に`origin/main`をfetchし、失敗時は起動しない。ローカル`main`が存在する場合は取得したrefと一致することも要求する。TAKT内の再fetchが失敗しても古いローカルmainへフォールバックさせないためである。古いmainがある場合は監督者が他のworktreeで使われていないこと・祖先関係を確認し、fast-forwardのみで更新してから再開する。ユーザーの変更をresetで消さない。`auto_fetch: true`も明示する。
+`run`前に`origin/main`をfetchし、失敗時は起動しない。ローカル`main`が存在する場合は取得したrefと一致することも要求する。TAKT内の再fetchが失敗しても古いローカルmainへフォールバックさせないためである。古いmainがある場合は監督者が他のworktreeで使われていないこと・祖先関係を確認し、fast-forwardのみで更新してから再開する。ユーザーの変更をresetで消さない。TAKTの`auto_fetch`はグローバル設定専用のため、プロジェクト設定には追加しない。
