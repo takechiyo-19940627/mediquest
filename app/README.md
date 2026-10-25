@@ -270,3 +270,16 @@ schema/移行/依存の追加はありません。`study_sessions` は単一利�
 - IMMEDIATE transactionで権限と対象セットを読み、競合するarchiveと開始要求は直列化されます。開始が先なら既存sessionを保持し、archiveが先なら新規開始を拒否します。UPDATE失敗時はrollbackし、安全な500とno-storeだけを返し、秘密を応答・ログに出しません。ローカル管理者/socket/Host/Origin/no-store、512 KiBの受信上限と固定エラーを再利用し、learnerは403です。GETは書き込みません。
 
 公開停止は一方向で、再公開・停止解除は対象外です。公開済み内容がAPI上不変な現段階に限り、保存状態そのものをキーとして一度だけ遷移させます。将来再公開を導入する場合は、古いarchive要求が新しい公開を停止しないよう別途版照合（expectedRevision等）が必要です。これは未合意の再公開機能を先取りしないための制限です。新しい改訂版の作成と旧版停止の同時処理は後続の改訂Issueで扱い、単独のarchiveはその代替ではありません。schema・migration・依存の変更はありません。HTTP経路、初回/再送とも200、revisionの加算、キー不要は Issue #46 の実装契約であり、既存docsの規定（status archived、公開停止による新規開始停止、既存演習・履歴の保持）とは区別します。
+
+## 未公開候補の内容修正・引用再照合・確認取消API（Issue #48）
+
+管理者が、一度も公開していないdraftセットに属する生成候補の問題文・選択肢・正答・解説・引用を修正できます。`docs/screens-and-data-model.md` の管理セット画面「問題・選択肢・正解・解説・引用の確認修正」、公開ルール2「問題内容の編集後は照合・管理者確認をやり直す」、ルール3「公開済みセットの構成と問題版の内容は固定する」を実装します。未公開かつ履歴から参照されていない候補だけを同じ `question_versions` 行で更新します。公開済み・archivedの版の修正、改訂用複製・新version生成、`supersedes` の切替、教材本文の編集、UI、生成モデルの再呼出、通知、不備解除、監査履歴、認証拡張は対象外です。
+
+- `PUT /api/admin/sets/:setId/versions/:versionId/content`: 本文は `expectedRevision`（GETのセットrevision）、`expectedFingerprint`（GETの候補fingerprint）と `body`/`choices`/`answerIds`/`explanation`/`quote` の完全な組です。部分更新はできません。これ以外のフィールド（`id`/`questionId`/`versionNo`/`sourceId`/`generationRunId`/`reviewedBy`/`reviewedAt`/`quoteVerified` など）、配列・非オブジェクト、不正JSONは400で、入力検証はセット検索より先です。内容5項目は生成結果と同じ契約（`validateGeneration`）で検証します: 本文・解説・引用は空白のみ不可で各10,000文字以内、選択肢は2〜6件・ID形式 `[A-Za-z0-9_-]{1,40}`・版内一意・ラベル2,000文字以内、正答IDは非空・重複なし・選択肢の部分集合。受信上限512 KiB/10秒、Content-Type、ローカル管理者/socket/Host/Origin/no-store、固定エラーは既存部品を再利用し、learner・user欠落・`MEDIQUEST_LOCAL_MODE=false` は403です。
+- 対象外の状態は409です: セットがdraft以外または公開日時あり、対象版が公開記録（`published_at` 非null、archived含む）を持つ別セットの `set_items` から参照、`study_items` から参照（演習履歴が参照する内容は変更しない）、不備確定済み（`invalidated_at` 非null）、生成runが成功以外、問題が `stopped`、問題/runと教材の所属不一致、確認者/時刻の片方だけが記録。所属しない版・不存在のセット/版は404です。
+- `expectedRevision` と `expectedFingerprint` の両方を現在値と照合し、どちらかが古ければ内容が同一でも409です（stale再送を『同じ本文だから』で受理しない）。両方が現在値で内容が完全一致する場合だけno-opとして200を返し、確認状態・revisionは変わりません。
+- 差分がある場合は同じIMMEDIATE transactionで、内容5項目と教材本文との `quoteVerified`（サーバー計算）を更新し、`reviewedBy`/`reviewedAt` をnullに戻し、既存の安全な `nextRevision` でセットrevisionを1増やします。`set_items`（採用のID/位置）、問題ID、版番号、生成run、教材、公開履歴、演習回答は変更しません。採用済み候補は未確認に戻るため、再確認するまで `POST .../publish` は409です。古いfingerprintでの確認・古い公開要求も409です。
+- 応答は初回/no-opとも200で `id/questionId/versionNo/body/choices/answerIds/explanation/quote/quoteVerified/reviewedBy/reviewedAt/fingerprint/revision/changed` の明示DTOです。`fingerprint` は新しい内容fingerprint、`revision` はセットの現在revision、`changed` は保存が起きたかです。
+- 確認API・公開API・採用APIとは同じtransactionで直列化されます。確認→編集は確認取消、編集→古いfingerprintの確認は409。公開→編集は409、編集→古い公開は409、編集後の新しい公開要求も再確認まで409です。同じ基準からの異なる編集は一方だけ保存され、A→B→Aの後に古い `expectedRevision` でBを再送しても復活しません。UPDATE途中の失敗は内容・確認・revisionをすべてrollbackし、安全な500とno-storeだけを返し、本文を応答・ログに出しません。
+
+成功応答が失われた場合の自動再送200（受付記録）は導入しません。クライアントは `GET /api/admin/sets/:id` で現在のrevision/fingerprint/内容を確認してから、必要なら新しい値で再送してください。引用一致と管理者確認は医学的正答性を保証しません。修正内容の総量は512 KiBの受信上限と各フィールド上限で制限され、費用保証ではありません。schema・migration・依存の変更はありません。同一行更新、stale 409、no-op契約、200/`changed` の応答形は Issue #48 の実装契約であり、既存docsの規定（編集後の再照合・再確認、公開済み版の不変）とは区別します。

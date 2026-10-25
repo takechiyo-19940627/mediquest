@@ -1,4 +1,4 @@
-import { publicationState } from '../publication/state';
+import { nextRevision, publicationState } from '../publication/state';
 import { and, desc, eq, lt, or, sql, isNotNull } from 'drizzle-orm';
 import type { Connection } from '../../db/connection';
 import {
@@ -8,11 +8,12 @@ import {
   generationRuns,
   sources,
   setItems,
+  studyItems,
 } from '../../db/schema';
 import { requireAdministrator } from '../local-admin';
 import { validateGeneration } from '../generation/validation';
 import type { sourcePage } from '../source-input';
-import { fingerprint, ReviewError, reviewInput } from './input';
+import { contentInput, fingerprint, ReviewError, reviewInput } from './input';
 
 function candidates(db: Pick<Connection['db'], 'select'>, setId: number) {
   return db
@@ -195,6 +196,137 @@ export function confirmVersion(
         reviewedAt,
         fingerprint: input.fingerprint,
       };
+    },
+    { behavior: 'immediate' },
+  );
+}
+// Issue #48: the administrator replaces the content of one candidate of a
+// never-published draft set in the same question_versions row. Published and
+// archived sets, versions referenced by any set with a publication record or by
+// any study item, invalidated versions, stopped questions and unsuccessful runs
+// are conflicts, so saved history never changes. The request must carry the
+// current set revision and content fingerprint; a stale pair is a conflict even
+// when the body is identical (no ABA replay). Identical content at the current
+// revision is a no-op that keeps the confirmation and revision. A change saves
+// the content with a server-computed quote check, clears the confirmation and
+// bumps the set revision in one IMMEDIATE transaction; set_items keep their
+// ids and positions, and the unconfirmed version blocks publication until it is
+// confirmed again.
+export function updateVersionContent(
+  connection: Connection,
+  setId: number,
+  versionId: number,
+  value: unknown,
+) {
+  return connection.db.transaction(
+    (tx) => {
+      requireAdministrator({ db: tx });
+      const input = contentInput(value);
+      const set = tx
+        .select()
+        .from(questionSets)
+        .where(eq(questionSets.id, setId))
+        .get();
+      if (!set) throw new ReviewError('missing');
+      const item = candidates(tx, setId).find(
+        (item) => item.version.id === versionId,
+      );
+      if (!item) throw new ReviewError('missing');
+      const { version, question, run, source } = item;
+      if (
+        set.status !== 'draft' ||
+        set.publishedAt !== null ||
+        tx
+          .select({ id: setItems.id })
+          .from(setItems)
+          .innerJoin(questionSets, eq(setItems.setId, questionSets.id))
+          .where(
+            and(
+              eq(setItems.questionVersionId, versionId),
+              isNotNull(questionSets.publishedAt),
+            ),
+          )
+          .get() !== undefined ||
+        tx
+          .select({ id: studyItems.id })
+          .from(studyItems)
+          .where(eq(studyItems.questionVersionId, versionId))
+          .get() !== undefined ||
+        version.invalidatedAt !== null ||
+        run.status !== 'succeeded' ||
+        question.status !== 'active' ||
+        question.sourceId !== set.sourceId ||
+        run.sourceId !== set.sourceId ||
+        (version.reviewedBy === null) !== (version.reviewedAt === null)
+      )
+        throw new ReviewError('conflict');
+      const current = fingerprint(version);
+      if (
+        current !== input.expectedFingerprint ||
+        set.revision !== input.expectedRevision
+      )
+        throw new ReviewError('conflict');
+      const next = {
+        ...version,
+        body: input.content.body,
+        choicesJson: input.content.choices,
+        answerIdsJson: input.content.answerIds,
+        explanation: input.content.explanation,
+        quote: input.content.quote,
+      };
+      const result = (
+        row: typeof next,
+        quoteVerified: boolean,
+        revision: number,
+        changed: boolean,
+      ) => ({
+        id: row.id,
+        questionId: row.questionId,
+        versionNo: row.versionNo,
+        body: row.body,
+        choices: row.choicesJson,
+        answerIds: row.answerIdsJson,
+        explanation: row.explanation,
+        quote: row.quote,
+        quoteVerified,
+        reviewedBy: row.reviewedBy,
+        reviewedAt: row.reviewedAt,
+        fingerprint: fingerprint(row),
+        revision,
+        changed,
+      });
+      if (fingerprint(next) === current)
+        return result(
+          version,
+          source.body.includes(version.quote),
+          set.revision,
+          false,
+        );
+      const quoteVerified = source.body.includes(next.quote);
+      const revision = nextRevision(set.revision);
+      tx.update(questionVersions)
+        .set({
+          body: next.body,
+          choicesJson: next.choicesJson,
+          answerIdsJson: next.answerIdsJson,
+          explanation: next.explanation,
+          quote: next.quote,
+          quoteVerified,
+          reviewedBy: null,
+          reviewedAt: null,
+        })
+        .where(eq(questionVersions.id, versionId))
+        .run();
+      tx.update(questionSets)
+        .set({ revision })
+        .where(eq(questionSets.id, setId))
+        .run();
+      return result(
+        { ...next, reviewedBy: null, reviewedAt: null },
+        quoteVerified,
+        revision,
+        true,
+      );
     },
     { behavior: 'immediate' },
   );

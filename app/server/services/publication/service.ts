@@ -4,16 +4,12 @@ import { questionSets, setItems } from '../../db/schema';
 import { requireAdministrator } from '../local-admin';
 import { ReviewError } from '../review/input';
 import { archiveInput, itemsInput, publishInput } from './input';
-import { publicationState, selectedItems, validateSelection } from './state';
-function nextRevision(revision: number) {
-  if (
-    !Number.isSafeInteger(revision) ||
-    revision < 0 ||
-    revision === Number.MAX_SAFE_INTEGER
-  )
-    throw new ReviewError('conflict');
-  return revision + 1;
-}
+import {
+  nextRevision,
+  publicationState,
+  selectedItems,
+  validateSelection,
+} from './state';
 export function replaceItems(
   connection: Connection,
   id: number,
