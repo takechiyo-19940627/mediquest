@@ -28,6 +28,13 @@ export function itemsInput(value: unknown) {
     throw new SourceError('invalid');
   return { expectedRevision, versionIds: input.versionIds as number[] };
 }
+// Issue #46: archiving takes an empty JSON object. The current saved state is
+// the only key (one-way transition), so no revision/fingerprint field exists,
+// and client-chosen user/status/revision fields are rejected.
+export function archiveInput(value: unknown) {
+  record(value, []);
+  return {};
+}
 export function publishInput(value: unknown) {
   const input = record(value, [
     'expectedRevision',
