@@ -7,6 +7,7 @@ import {
   unique,
   uniqueIndex,
 } from 'drizzle-orm/sqlite-core';
+import type { AnySQLiteColumn } from 'drizzle-orm/sqlite-core';
 
 export const users = sqliteTable(
   'users',
@@ -230,7 +231,13 @@ export const studySessions = sqliteTable(
       .notNull()
       .references(() => questionSets.id, { onDelete: 'restrict' }),
     status: text('status', { enum: ['in_progress', 'completed'] }).notNull(),
-    mode: text('mode', { enum: ['normal'] }).notNull(),
+    mode: text('mode', { enum: ['normal', 'review'] }).notNull(),
+    // Issue #44: a review session stores its direct parent (the session whose
+    // wrong answers it re-asks). Normal sessions have no parent.
+    parentSessionId: integer('parent_session_id').references(
+      (): AnySQLiteColumn => studySessions.id,
+      { onDelete: 'restrict' },
+    ),
     startRequestKey: text('start_request_key').notNull(),
     startedAt: integer('started_at').notNull(),
     completedAt: integer('completed_at'),
@@ -244,7 +251,14 @@ export const studySessions = sqliteTable(
       'study_session_status_check',
       sql`${table.status} IN ('in_progress','completed')`,
     ),
-    check('study_session_mode_check', sql`${table.mode} = 'normal'`),
+    check(
+      'study_session_mode_check',
+      sql`${table.mode} IN ('normal','review')`,
+    ),
+    check(
+      'study_session_parent_check',
+      sql`(${table.mode} = 'normal' AND ${table.parentSessionId} IS NULL) OR (${table.mode} = 'review' AND ${table.parentSessionId} IS NOT NULL AND ${table.parentSessionId} <> ${table.id})`,
+    ),
   ],
 );
 export const studyItems = sqliteTable(

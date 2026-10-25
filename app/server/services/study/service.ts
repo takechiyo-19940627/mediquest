@@ -18,9 +18,10 @@ import {
 } from '../../db/schema';
 import { requireLocalLearner } from '../learning-catalog/service';
 import { selectedItems, versionForSet } from '../publication/state';
+import type { SetRow } from '../publication/state';
 import { validateGeneration } from '../generation/validation';
 import { requestKey } from '../source-input';
-import { startInput, StudyError } from './input';
+import { reviewStartInput, startInput, StudyError } from './input';
 type Reader = Pick<Connection['db'], 'select'>;
 function owned(db: Reader, id: number, userId: number) {
   const session = db
@@ -71,12 +72,113 @@ function summary(db: Reader, session: typeof studySessions.$inferSelect) {
     setId: session.setId,
     status: session.status,
     mode: session.mode,
+    parentSessionId: session.parentSessionId,
     startedAt: session.startedAt,
     completedAt: session.completedAt,
     items: projected,
     statistics: stats,
     currentItemId: nextItemId(projected),
   };
+}
+// The user's saved start request for this key, if any. The (user, key) unique
+// constraint is shared by every mode, so callers compare mode/parent/set.
+function priorStart(db: Reader, userId: number, key: string) {
+  return db
+    .select()
+    .from(studySessions)
+    .where(
+      and(
+        eq(studySessions.userId, userId),
+        eq(studySessions.startRequestKey, key),
+      ),
+    )
+    .get();
+}
+// A set is open for a new start only while it is published with a publisher
+// and time. Archiving stops new starts (and new reviews) but keeps sessions.
+function publishedSet(db: Reader, setId: number) {
+  const set = db
+    .select()
+    .from(questionSets)
+    .where(eq(questionSets.id, setId))
+    .get();
+  if (
+    !set ||
+    set.status !== 'published' ||
+    set.publishedBy === null ||
+    set.publishedAt === null
+  )
+    return null;
+  return set;
+}
+// Shared start-time check for one fixed version of a set. Integrity failures
+// (wrong set/source, broken format, duplicate logical question) are conflicts;
+// stopped, invalidated, unconfirmed or failed-run versions are not obtainable.
+function obtainable(
+  db: Reader,
+  set: SetRow,
+  versionId: number,
+  seen: Set<number>,
+) {
+  let row: ReturnType<typeof versionForSet>;
+  try {
+    row = versionForSet(db, set, versionId);
+  } catch (error) {
+    if (error instanceof ReviewError) throw new StudyError('conflict');
+    throw error;
+  }
+  const { version, question, run, source } = row;
+  if (
+    question.status !== 'active' ||
+    version.invalidatedAt !== null ||
+    version.reviewedBy === null ||
+    version.reviewedAt === null ||
+    run.status !== 'succeeded'
+  )
+    return false;
+  try {
+    validateGeneration(
+      {
+        questions: [
+          {
+            body: version.body,
+            choices: version.choicesJson,
+            answerIds: version.answerIdsJson,
+            explanation: version.explanation,
+            quote: version.quote,
+          },
+        ],
+      },
+      1,
+      source.body,
+    );
+  } catch {
+    throw new StudyError('conflict');
+  }
+  if (seen.has(question.id)) throw new StudyError('conflict');
+  seen.add(question.id);
+  return true;
+}
+type Inserter = Pick<Connection['db'], 'select' | 'insert'>;
+function createSession(
+  tx: Inserter,
+  session: Omit<typeof studySessions.$inferInsert, 'startedAt' | 'status'>,
+  items: { questionVersionId: number; position: number }[],
+) {
+  const created = tx
+    .insert(studySessions)
+    .values({ ...session, status: 'in_progress', startedAt: Date.now() })
+    .returning()
+    .get();
+  for (const item of items)
+    tx.insert(studyItems)
+      .values({
+        sessionId: created.id,
+        questionVersionId: item.questionVersionId,
+        position: item.position,
+      })
+      .run();
+  return created;
 }
 export function startSession(
   connection: Connection,
@@ -88,97 +190,100 @@ export function startSession(
       const userId = requireLocalLearner({ db: tx });
       const input = startInput(value);
       const key = requestKey(keyValue);
-      const prior = tx
-        .select()
-        .from(studySessions)
-        .where(
-          and(
-            eq(studySessions.userId, userId),
-            eq(studySessions.startRequestKey, key),
-          ),
-        )
-        .get();
+      const prior = priorStart(tx, userId, key);
       if (prior) {
-        if (prior.setId !== input.setId) throw new StudyError('conflict');
+        // Issue #44: a review started with this key is never replayed here.
+        if (
+          prior.mode !== 'normal' ||
+          prior.parentSessionId !== null ||
+          prior.setId !== input.setId
+        )
+          throw new StudyError('conflict');
         return { session: summary(tx, prior), replayed: true };
       }
-      const set = tx
-        .select()
-        .from(questionSets)
-        .where(eq(questionSets.id, input.setId))
-        .get();
-      if (
-        !set ||
-        set.status !== 'published' ||
-        set.publishedBy === null ||
-        set.publishedAt === null
-      )
-        throw new StudyError('missing');
+      const set = publishedSet(tx, input.setId);
+      if (!set) throw new StudyError('missing');
       const selected = selectedItems(tx, set.id);
       if (selected.length > 10) throw new StudyError('conflict');
-      const available: typeof selected = [];
       const seen = new Set<number>();
-      for (const item of selected) {
-        let row: ReturnType<typeof versionForSet>;
-        try {
-          row = versionForSet(tx, set, item.questionVersionId);
-        } catch (error) {
-          if (error instanceof ReviewError) throw new StudyError('conflict');
-          throw error;
-        }
-        const { version, question, run, source } = row;
+      const available = selected.filter((item) =>
+        obtainable(tx, set, item.questionVersionId, seen),
+      );
+      if (!available.length) throw new StudyError('conflict');
+      const session = createSession(
+        tx,
+        { userId, setId: set.id, mode: 'normal', startRequestKey: key },
+        available,
+      );
+      return { session: summary(tx, session), replayed: false };
+    },
+    { behavior: 'immediate' },
+  );
+}
+// Issue #44: start a review session from the owner's completed session. The
+// server picks the parent's wrong answers (answered, incorrect, no saved
+// exclusion) whose fixed version is still obtainable: question active, version
+// not invalidated, set still published and the version still in its published
+// collection. The child keeps the parent's version ids and position values,
+// stores only its direct parent, and starts with every answer column null. The
+// parent's rows are read, never written. Replays of the same key return the
+// saved child without re-selecting; a key saved for another mode, parent or
+// set is a conflict. No eligible wrong answer, a parent that is not completed,
+// or a set no longer open for new starts is a conflict and creates nothing.
+export function startReviewSession(
+  connection: Connection,
+  parentId: number,
+  value: unknown,
+  keyValue: unknown,
+) {
+  return connection.db.transaction(
+    (tx) => {
+      const userId = requireLocalLearner({ db: tx });
+      reviewStartInput(value);
+      const key = requestKey(keyValue);
+      const parent = owned(tx, parentId, userId);
+      const prior = priorStart(tx, userId, key);
+      if (prior) {
         if (
-          question.status !== 'active' ||
-          version.invalidatedAt !== null ||
-          version.reviewedBy === null ||
-          version.reviewedAt === null ||
-          run.status !== 'succeeded'
+          prior.mode !== 'review' ||
+          prior.parentSessionId !== parent.id ||
+          prior.setId !== parent.setId
+        )
+          throw new StudyError('conflict');
+        return { session: summary(tx, prior), replayed: true };
+      }
+      if (parent.status !== 'completed') throw new StudyError('conflict');
+      const set = publishedSet(tx, parent.setId);
+      if (!set) throw new StudyError('conflict');
+      const published = new Set(
+        selectedItems(tx, set.id).map((item) => item.questionVersionId),
+      );
+      const seen = new Set<number>();
+      const targets: { questionVersionId: number; position: number }[] = [];
+      for (const { item } of items(tx, parent.id)) {
+        if (
+          item.answeredAt === null ||
+          item.isCorrect !== false ||
+          item.excludedAt !== null
         )
           continue;
-        try {
-          validateGeneration(
-            {
-              questions: [
-                {
-                  body: version.body,
-                  choices: version.choicesJson,
-                  answerIds: version.answerIdsJson,
-                  explanation: version.explanation,
-                  quote: version.quote,
-                },
-              ],
-            },
-            1,
-            source.body,
-          );
-        } catch {
+        if (!published.has(item.questionVersionId))
           throw new StudyError('conflict');
-        }
-        if (seen.has(question.id)) throw new StudyError('conflict');
-        seen.add(question.id);
-        available.push(item);
+        if (obtainable(tx, set, item.questionVersionId, seen))
+          targets.push(item);
       }
-      if (!available.length) throw new StudyError('conflict');
-      const session = tx
-        .insert(studySessions)
-        .values({
+      if (!targets.length) throw new StudyError('conflict');
+      const session = createSession(
+        tx,
+        {
           userId,
           setId: set.id,
-          status: 'in_progress',
-          mode: 'normal',
+          mode: 'review',
+          parentSessionId: parent.id,
           startRequestKey: key,
-          startedAt: Date.now(),
-        })
-        .returning()
-        .get();
-      for (const item of available)
-        tx.insert(studyItems)
-          .values({
-            sessionId: session.id,
-            questionVersionId: item.questionVersionId,
-            position: item.position,
-          })
-          .run();
+        },
+        targets,
+      );
       return { session: summary(tx, session), replayed: false };
     },
     { behavior: 'immediate' },

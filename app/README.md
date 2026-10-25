@@ -1,6 +1,6 @@
 # Mediquest アプリ基盤
 
-Nuxt / Vue / TypeScript と Nuxt UI を使った日本語の学習ホームです。教材がない空状態、ティール基調のライト・ダーク・OS連動テーマ、公開稼働確認APIを含みます。SQLiteのDB基盤を含みます。ローカル管理者向け教材・生成・確認・採用・明示公開APIを含みます。本人限定の演習開始・回答確定・採点・未回答スキップ・履歴一覧APIも含みます。管理UI・演習UI・履歴UI・外部認証・実AI検証は未対応です。演習画面のデザイン基準は今後合意します。
+Nuxt / Vue / TypeScript と Nuxt UI を使った日本語の学習ホームです。教材がない空状態、ティール基調のライト・ダーク・OS連動テーマ、公開稼働確認APIを含みます。SQLiteのDB基盤を含みます。ローカル管理者向け教材・生成・確認・採用・明示公開APIを含みます。本人限定の演習開始・回答確定・採点・未回答スキップ・履歴一覧・誤答復習開始APIも含みます。管理UI・演習UI・履歴UI・外部認証・実AI検証は未対応です。演習画面のデザイン基準は今後合意します。
 
 ## 開発
 
@@ -242,3 +242,18 @@ schema/移行/依存の追加はありません。`study_sessions` は単一利�
 - 権限は既存の固定ローカル利用者（admin/learner）・socket/Host/Origin・no-store境界を共有し、learnerの管理APIは引き続き403です。
 
 移行 `0007_study_item_skipped_at` は `ALTER TABLE study_items ADD skipped_at integer`（nullable）だけで、表の再作成はありません。既存行はnullとして読め、回答・除外・不備・報告・公開データ・FKを保持し、再適用は無変更です。アプリ停止中に既存の移行コマンドを実行してください。再スキップ時の非回転、回答後の `skipped_at` 保持、HTTP形状（200/200・`item/session/replayed`）、`skippedAt` の全item付与、`skippedUnansweredCount` は Issue #41 の実装契約であり、既存docsの規定（列・順序・未完了）とは区別します。
+
+## 本人の誤答から固定版の復習演習を開始するAPI（Issue #44）
+
+本人は完了した自分の演習の誤答だけを集めた新しい復習演習を開始できます。`docs/screens-and-data-model.md` の `mode` (normal/review)・`parent_session_id`、「誤答復習は出題可能な誤答版を使って新規演習を作る。新しい版へ自動置換しない。停止・不備の問題は復習からも除外する」、「公開停止は新規開始を止める」を実装します。UI、改訂版への置換、誤答以外のカスタム復習、間隔反復、親子統合成績、削除は対象外です。
+
+- `POST /api/sessions/:sessionId/reviews` に UUID の `Idempotency-Key` と空JSON `{}` を送ります。`:sessionId` は本人の元演習（親）です。利用者・親・版・正誤をクライアントが指定するフィールド（`userId` / `parentSessionId` / `versionIds` / `isCorrect` / `setId` など）や配列・非オブジェクトは400で、入力・キー検証は所有者判定より先です。他人の演習・不存在は同じ404です。
+- 対象は親の `study_items` のうち回答済みかつ誤答（`answered_at` 非null・`is_correct=false`）で保存済み除外がなく、問題が現在active・版が不備でなく・形式検証を通り・親のセットの公開集合に残っている固定版です。正答・未回答・スキップのみ・停止中・不備版・保存済み除外は選びません。選定は開始APIと同じ判定部品を再利用し、最新版への置換はしません。対象0件は409で空の演習を作りません。
+- 新規作成は親が `completed` で、かつ親のセットが現在公開中（published・公開者/時刻あり）の場合だけです。親が進行中、またはセットが公開停止（archived）・未公開の場合は409です（親は本人所有で存在するため404ではなく状態競合として扱います）。公開停止後も保存済みの復習演習の再取得・再開・同一キー再送は保持します。
+- 子の `study_items` は親の `question_version_id` と `position` 値をそのまま保持し（非連続可、親子で対応可能）、回答・採点・スキップ・除外列はすべてnullで作成します。`mode='review'`、`parent_session_id=親ID`、`set_id=親のset_id`。親の回答・正誤・時刻・スキップ・除外・状態は一切変更しません。
+- 初回201 / `replayed:false`、同一キー・同一親の再送（並行送信を含む）は200 / `replayed:true` で保存済みの復習sessionを現在状態の投影で返し、対象を再選定しません。別キーは別の復習演習です。`(user_id, start_request_key)` の一意制約は全mode共通なので、同じキーを別の親・通常開始に使う、通常開始のキーで復習を開始する、復習のキーで通常開始する、はいずれも409で誤ったsessionを返しません。
+- 応答は `{ session, replayed }` で、`session` は個別GETと同じ概要に `parentSessionId` を追加したものです（通常演習はnull）。個別GET・履歴一覧の各itemにも `parentSessionId` を追加します。開始応答・子の未回答item GETに親の正誤・正答・解説・引用は含めません。
+- 復習sessionの回答・スキップ・再開・不備報告・履歴は通常演習と同じ所有者・不備規則で動作し、親の採点を変更しません。復習演習を完了すれば、その誤答から更に復習を開始でき、直接の親IDだけを保存します（多世代の集約はしません）。
+- session/items の保存は同じIMMEDIATE transactionで、途中失敗は全てrollbackし安全な500とno-storeだけを返します。GET・履歴は書き込みをしません。権限は既存の固定ローカル利用者（admin/learner）・socket/Host/Origin・no-store境界を共有し、learnerの管理APIは引き続き403です。
+
+移行 `0008_study_session_review` は `study_sessions` を再作成し、`mode` のCHECKを `normal/review` に拡張、nullableの `parent_session_id`（self FK、ON DELETE restrict）と `(normal かつ parent null) または (review かつ parent 非null かつ parent≠自身)` のCHECKを追加します。0006と同じく旧行の新列には明示的に NULL をコピーし、既存の演習・回答・スキップ・除外・不備・報告・公開データ・FKを保持し、再適用は無変更です。アプリ停止中に既存の移行コマンドを実行してください。復習の経路/本文、完了親限定、公開停止セットからの新規復習拒否（409）、親position値の保持、再復習許可、`parentSessionId` DTO、公開集合外の版を409とする扱いは Issue #44 の実装契約であり、既存docsの規定（mode/parent列・誤答版での新規作成・非置換・停止/不備除外・公開停止による新規開始停止）とは区別します。

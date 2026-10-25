@@ -79,16 +79,23 @@ update study_items set excluded_reason='invalidated',excluded_at=8 where id=2;`)
             ...(row as Record<string, unknown>),
             skipped_at: null,
           }))
-        : rows,
+        : tables[index] === 'study_sessions'
+          ? // Issue #44 (0008) adds nullable parent_session_id; old rows read as null.
+            rows.map((row) => ({
+              ...(row as Record<string, unknown>),
+              parent_session_id: null,
+            }))
+          : rows,
     );
     migrateDatabase(c, migrations);
     const migrated = snapshot();
     expect(migrated).toEqual(before);
     migrateDatabase(c, migrations);
     expect(snapshot()).toEqual(migrated);
+    // 0007 baseline → full set applies 0008 (Issue #44) as well.
     expect(
       c.client.prepare('select count(*) n from __drizzle_migrations').get(),
-    ).toEqual({ n: 8 });
+    ).toEqual({ n: 9 });
     expect(c.client.pragma('foreign_key_check')).toEqual([]);
     expect(c.client.pragma('foreign_keys', { simple: true })).toBe(1);
     const column = (

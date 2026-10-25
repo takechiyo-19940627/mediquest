@@ -10,7 +10,9 @@ import { createSource } from '../../server/services/sources';
 import { generateQuestions } from '../../server/services/generation/service';
 import { getSet, confirmVersion } from '../../server/services/review/service';
 import { output, sourceText } from './generation';
-export async function publicationFixture() {
+// candidateCount is the number of generated candidates per set (1-10; the
+// default 3 keeps the existing tests, Issue #44 review tests use more).
+export async function publicationFixture(candidateCount = 3) {
   const directory = mkdtempSync(join(tmpdir(), 'mediquest-publication-'));
   const database = join(directory, 'test.sqlite');
   const env = { MEDIQUEST_DB_PATH: database };
@@ -33,12 +35,12 @@ export async function publicationFixture() {
       generateQuestions(
         {
           sourceId: 1,
-          requestedCount: 3,
+          requestedCount: candidateCount,
           title: 'セット',
           requestKey: randomUUID(),
         },
         { model: 'test', promptVersion: 'v1' },
-        async () => ({ kind: 'success', output: output(3) }),
+        async () => ({ kind: 'success', output: output(candidateCount) }),
         () => openDatabase(env),
       );
     const run = await generate();

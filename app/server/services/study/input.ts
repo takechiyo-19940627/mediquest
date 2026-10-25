@@ -27,6 +27,12 @@ export function resumeInput(value: unknown) {
 export function skipInput(value: unknown) {
   resumeInput(value);
 }
+// Issue #44 review start: the body is an empty object. The parent comes from
+// the route, the user from the server, the versions from the parent's wrong
+// answers; client user/parent/version/grade fields are rejected before the DB.
+export function reviewStartInput(value: unknown) {
+  resumeInput(value);
+}
 // Issue #36 history listing: own sessions only, so no user/role/set filters.
 export function historyQuery(query: Record<string, unknown>) {
   if (
