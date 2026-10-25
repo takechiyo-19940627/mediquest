@@ -22,6 +22,11 @@ export function resumeInput(value: unknown) {
   )
     throw new SourceError('invalid');
 }
+// Issue #41 skip: the body is an empty object. The server fixes the user, time
+// and target item; client user/time/answer fields are rejected before the DB.
+export function skipInput(value: unknown) {
+  resumeInput(value);
+}
 // Issue #36 history listing: own sessions only, so no user/role/set filters.
 export function historyQuery(query: Record<string, unknown>) {
   if (

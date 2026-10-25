@@ -8,7 +8,7 @@ import {
   studySessions,
 } from '../../db/schema';
 import { requireLocalLearner } from '../learning-catalog/service';
-import { itemState, statistics } from './answers';
+import { itemState, nextItemId, statistics } from './answers';
 import type { historyQuery } from './input';
 type Reader = Pick<Connection['db'], 'select'>;
 // Keep the history DTO explicit: no items, choices, answers, explanations,
@@ -29,6 +29,7 @@ type ItemProgress = {
   id: number;
   state: ReturnType<typeof itemState>;
   isCorrect: boolean | null;
+  skippedAt: number | null;
 };
 function progress(db: Reader, sessionIds: number[]) {
   const grouped = new Map<number, ItemProgress[]>();
@@ -40,6 +41,7 @@ function progress(db: Reader, sessionIds: number[]) {
       answeredAt: studyItems.answeredAt,
       excludedAt: studyItems.excludedAt,
       isCorrect: studyItems.isCorrect,
+      skippedAt: studyItems.skippedAt,
       questionStatus: questions.status,
       invalidatedAt: questionVersions.invalidatedAt,
     })
@@ -58,6 +60,7 @@ function progress(db: Reader, sessionIds: number[]) {
       id: row.id,
       state: itemState(row, row.questionStatus, row.invalidatedAt),
       isCorrect: row.isCorrect,
+      skippedAt: row.skippedAt,
     });
     grouped.set(row.sessionId, list);
   }
@@ -103,8 +106,7 @@ export function listSessions(
         const items = states.get(session.id) ?? [];
         return {
           ...session,
-          currentItemId:
-            items.find((item) => item.state === 'unanswered')?.id ?? null,
+          currentItemId: nextItemId(items),
           statistics: statistics(items),
         };
       }),

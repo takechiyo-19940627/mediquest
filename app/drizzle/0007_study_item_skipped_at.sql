@@ -1,0 +1,1 @@
+ALTER TABLE `study_items` ADD `skipped_at` integer;

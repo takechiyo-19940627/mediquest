@@ -1,6 +1,6 @@
 # Mediquest アプリ基盤
 
-Nuxt / Vue / TypeScript と Nuxt UI を使った日本語の学習ホームです。教材がない空状態、ティール基調のライト・ダーク・OS連動テーマ、公開稼働確認APIを含みます。SQLiteのDB基盤を含みます。ローカル管理者向け教材・生成・確認・採用・明示公開APIを含みます。本人限定の演習開始・回答確定・採点・履歴一覧APIも含みます。管理UI・演習UI・履歴UI・外部認証・実AI検証は未対応です。演習画面のデザイン基準は今後合意します。
+Nuxt / Vue / TypeScript と Nuxt UI を使った日本語の学習ホームです。教材がない空状態、ティール基調のライト・ダーク・OS連動テーマ、公開稼働確認APIを含みます。SQLiteのDB基盤を含みます。ローカル管理者向け教材・生成・確認・採用・明示公開APIを含みます。本人限定の演習開始・回答確定・採点・未回答スキップ・履歴一覧APIも含みます。管理UI・演習UI・履歴UI・外部認証・実AI検証は未対応です。演習画面のデザイン基準は今後合意します。
 
 ## 開発
 
@@ -163,10 +163,10 @@ TAKT #10停止中の監督下実装です。UIは未実装で、canStartは現�
 
 ## 演習開始・固定出題・再取得（Issue #28）
 
-固定ローカル利用者（admin/learner）が公開セットから演習を開始できます。TAKT #10停止中の監督下実装で、UI・スキップ・復習は未実装です。回答確定・採点・結果集計はIssue #30、本人の履歴一覧はIssue #36を参照してください。本人PC用の既存socket/Host/Origin/no-store境界を使い、外部認証や利用者切替は追加しません。
+固定ローカル利用者（admin/learner）が公開セットから演習を開始できます。TAKT #10停止中の監督下実装で、UI・復習は未実装です。回答確定・採点・結果集計はIssue #30、本人の履歴一覧はIssue #36、未回答スキップと再開順序はIssue #41を参照してください。本人PC用の既存socket/Host/Origin/no-store境界を使い、外部認証や利用者切替は追加しません。
 
 - `POST /api/sessions`: UUIDのIdempotency-KeyとJSON `{ "setId": 1 }`。初回201、同一キー・同一セットは200で同じsession、異セットは409。別キーは別演習です。セット公開・現在の出題可能版/形式を開始transaction内で再確認し、0件なら409。未公開は404です。回答列はnullで作成します。
-- `GET /api/sessions/:sessionId`: 本人の概要と順序付きitems（id/position/state）、最初の取得可能な未回答currentItemIdを返します。保存した版と公開集合のpositionを固定し、再取得や再起動で並び替えません。現在の最新版へ差し替えず、ランダム化もしません。
+- `GET /api/sessions/:sessionId`: 本人の概要と順序付きitems（id/position/state/skippedAt）、取得可能な未回答のうち通常未回答を先に、なければスキップ済みをposition順で選んだcurrentItemIdを返します（Issue #41）。保存した版と公開集合のpositionを固定し、再取得や再起動で並び替えません。現在の最新版へ差し替えず、ランダム化もしません。
 - `GET /api/sessions/:sessionId/items/:itemId`: 未回答の場合は、本人sessionに属する問題のid/position/body/choices/requiredSelectionCountだけを返します。選択肢IDは全選択肢を元の順序で返し、どれが正答かを示す配列・判定・解説・引用・教材・生成情報は返しません。HTMLはJSONの文字列であり、将来のUIでもv-htmlに渡しません。
 - `POST /api/sessions/:sessionId/resume`: 空JSON `{}`。未回答かつ現在stoppedの項目に除外理由stoppedと時刻を原子的に保存します。既存除外は上書きしません。同じ操作は冪等です。他人session/itemや別sessionのitemは不存在と同じ404です。
 
@@ -188,11 +188,11 @@ GETは書込みをせず、未回答の現在停止または保存済み除外�
 
 session.statisticsはtotalItemCount/excludedCount/eligibleCount/answeredEligibleCount/unansweredEligibleCount/correctEligibleCountを返します。accuracyは **correctEligibleCount / eligibleCount の0〜1比率** です。未回答は未正答として分母に含め、statusで未完了を区別します。対象0件はaccuracy=null・accuracyStatus=no_eligible_items、それ以外はaccuracyStatus=availableです。除外した行や過去回答は削除しません。丸めや点数表示は未実装のUIへ委ねます。
 
-schema/依存追加はありません。既存のローカル利用者/socket/Host/Origin/no-store、有限JSON受信、固定エラー境界を維持します。TAKT #10停止中の監督下実装で、UI・スキップ・復習・外部認証は対象外です。不備確定は Issue #34、履歴一覧は Issue #36 を参照してください。
+schema/依存追加はありません。既存のローカル利用者/socket/Host/Origin/no-store、有限JSON受信、固定エラー境界を維持します。TAKT #10停止中の監督下実装で、UI・復習・外部認証は対象外です。不備確定は Issue #34、履歴一覧は Issue #36、未回答スキップは Issue #41 を参照してください。
 
 ## 不備報告の受付と管理者確認（Issue 32）
 
-TAKT #10 の停止中に監督下で実装した API です。UI・通知・スキップは未実装です。管理判断・不備版除外は Issue #34 を参照してください。
+TAKT #10 の停止中に監督下で実装した API です。UI・通知は未実装です。管理判断・不備版除外は Issue #34、報告者本人の未回答スキップ（報告とは連動しない独立した明示操作）は Issue #41 を参照してください。
 
 - `POST /api/sessions/:sessionId/items/:itemId/reports` は本人の項目に `{ "message": "指摘内容" }` を受け付けます。trim 後 1〜2000 Unicode コードポイント、未知フィールドは拒否します。未回答・回答済み・完了・停止・保存済み除外の項目から報告できます。
 - 同じ利用者・固定問題版の open 報告は一つです。初回は 201 / `replayed:false`、既存があれば 200 / `replayed:true` と既存本文を返します。別の演習や異なる本文で再送しても、最初の本文・参照項目・時刻を上書きしません。入力・所有者検証は再送判定より先です。
@@ -214,7 +214,7 @@ GET は保存しません。resume / 新規回答成功の進捗同期では不�
 
 0006 は Drizzle 生成 SQL の旧表コピーで新規 nullable 列を明示 NULL に補正しています。参照される表を再作成するため移行専用接続で FK を一時停止し、全未適用移行と履歴を IMMEDIATE transaction 内で適用、全 FK 整合を確認してから commit します。失敗時は DDL・データ・履歴を rollback し、成功・失敗とも FK を復元します。アプリ稼働を止めて既存の移行コマンドを実行してください。
 
-TAKT #10 停止中の直接監督実装です。UI・通知・改訂・複製・全版停止・不備解除・スキップ・復習・外部認証は対象外です。
+TAKT #10 停止中の直接監督実装です。UI・通知・改訂・複製・全版停止・不備解除・復習・外部認証は対象外です。本人の未回答スキップは Issue #41 を参照してください。
 
 ## 本人限定の演習履歴・中断一覧（Issue #36）
 
@@ -227,3 +227,18 @@ TAKT #10 停止中の直接監督実装です。UI・通知・改訂・複製・
 - 一覧GETは書込みをしません。返したIDはそのまま既存の個別GET・resume・item取得に使えます。read transaction内で本人解決→対象ページのsession取得→そのページ分だけ進捗を投影し、全履歴をメモリへ読み込みません。`limit+1` で次ページ有無を判定します。
 
 schema/移行/依存の追加はありません。`study_sessions` は単一利用者・小規模データで、`user_id` が既存一意制約の先頭列にあるため、専用indexは実データ量の根拠が出るまで追加しません。既存のローカルmode/socket/Host/Origin/no-store/固定エラー境界を共有し、保存系の障害は安全な500だけを返します。並び順・status filter・limit/cursor形状・現在タイトル表示は Issue #36 の実装契約であり、プロダクト合意（画面一覧の `/history`・ホームの中断演習・UXの保存済み進捗からの再開）とは区別します。履歴UI・結果専用画面・検索/期間指定・総件数・履歴削除・バックアップ/復元は対象外です。
+
+## 本人の未回答スキップと再開順序API（Issue #41）
+
+本人は進行中演習の取得可能な未回答itemを一時的にスキップし、学習を続けられます。`docs/screens-and-data-model.md` の `study_items.skipped_at` と「通常未回答→最後にスキップ分、未回答が残れば完了しない」、`docs/ux-guidelines.md` の「報告者本人が一時スキップして学習継続、誤答として新規記録しない」を実装します。UI・スキップ解除・任意並替え・報告連動の自動操作・誤答復習は対象外です。
+
+- `POST /api/sessions/:sessionId/items/:itemId/skip` に空JSON `{}` を送ります。利用者・時刻・回答をクライアントが指定するフィールド（`userId` / `skippedAt` / `selectedIds` など）や配列・非オブジェクトは400で、入力検証は所有者判定より先です。他人のsession・別sessionのitem・不存在は同じ404です。
+- 対象は本人のin_progress sessionに属する未回答かつ非除外（停止中でない・不備版でない・保存済み除外でない）itemだけです。回答済み（回答後の遅延再送を含む）・停止・不備・保存済み除外・完了済みsessionへの新規スキップは409で、除外も時刻も書き込みません。
+- 初回は `skipped_at` が null の行だけを条件付きUPDATEで更新し、IMMEDIATE transaction内で一度だけ時刻を保存します。同じitemへの再送・並行送信は保存済みの時刻を返し `replayed:true` です。時刻の上書きや順序の回転はしません。初回・再送とも200です。
+- 応答は `{ item: { id, position, skippedAt }, session, replayed }` だけです。問題文・選択肢・正答・解説・引用・feedbackは含みません。`session` は個別GETと同じ概要で、各itemに `skippedAt`（nullまたは時刻）、`statistics` に `skippedUnansweredCount`（除外されていないスキップ済み未回答の件数）を追加します。`unansweredEligibleCount` はスキップ分を含んだままで、accuracyの分母・対象0件のnull・不備優先は従来どおりです。
+- 次問の選択は開始・個別GET・回答・resume・履歴一覧で共通です。取得可能な未回答のうち `skippedAt=null` をposition順で先に、なければスキップ済みをposition順で選びます。保存済みpositionとitems配列の順序は変えず、サーバー再起動・resume後も同じ順序です。スキップ済みが停止・不備・保存済み除外になった場合は次問候補と `skippedUnansweredCount` から外れます。
+- スキップは未回答のまま残り、`selected_ids_json` / `is_correct` / `answered_at` / `excluded_*` を書きません。全問スキップでも `in_progress` のまま先頭のスキップへ戻り、最後の未回答一問をスキップしても同じitemがcurrentのまま完了しません。スキップ済みitemへの回答は通常どおり一度だけ確定し、回答後は選出対象外になります。`skipped_at` は過去の操作記録として回答後も保持します。
+- skip自体は完了判定や除外の保存を行いません。完了への更新と停止/不備除外の保存は従来どおり回答・resumeのtransactionに委ねます。応答のsessionは現在の停止状態を投影するだけで、保存同期はしません。GET・履歴一覧は書き込みをしません。保存失敗は全てrollbackし、安全な500とno-storeだけを返します。
+- 権限は既存の固定ローカル利用者（admin/learner）・socket/Host/Origin・no-store境界を共有し、learnerの管理APIは引き続き403です。
+
+移行 `0007_study_item_skipped_at` は `ALTER TABLE study_items ADD skipped_at integer`（nullable）だけで、表の再作成はありません。既存行はnullとして読め、回答・除外・不備・報告・公開データ・FKを保持し、再適用は無変更です。アプリ停止中に既存の移行コマンドを実行してください。再スキップ時の非回転、回答後の `skipped_at` 保持、HTTP形状（200/200・`item/session/replayed`）、`skippedAt` の全item付与、`skippedUnansweredCount` は Issue #41 の実装契約であり、既存docsの規定（列・順序・未完了）とは区別します。

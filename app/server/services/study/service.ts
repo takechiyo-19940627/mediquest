@@ -2,6 +2,7 @@ import {
   answerInput,
   gradeAnswer,
   itemState,
+  nextItemId,
   statistics,
   exclusionReason,
 } from './answers';
@@ -53,6 +54,7 @@ function summary(db: Reader, session: typeof studySessions.$inferSelect) {
     id: item.id,
     position: item.position,
     state: itemState(item, questionStatus, invalidatedAt),
+    skippedAt: item.skippedAt,
     ...(invalidatedAt !== null
       ? { excludedReason: 'invalidated' as const }
       : {}),
@@ -61,6 +63,7 @@ function summary(db: Reader, session: typeof studySessions.$inferSelect) {
     rows.map(({ item, questionStatus, invalidatedAt }) => ({
       state: itemState(item, questionStatus, invalidatedAt),
       isCorrect: item.isCorrect,
+      skippedAt: item.skippedAt,
     })),
   );
   return {
@@ -72,8 +75,7 @@ function summary(db: Reader, session: typeof studySessions.$inferSelect) {
     completedAt: session.completedAt,
     items: projected,
     statistics: stats,
-    currentItemId:
-      projected.find((item) => item.state === 'unanswered')?.id ?? null,
+    currentItemId: nextItemId(projected),
   };
 }
 export function startSession(
@@ -361,6 +363,54 @@ export function answerStudyItem(
         session: progress,
         replayed: false,
       };
+    },
+    { behavior: 'immediate' },
+  );
+}
+// Issue #41: the owner skips one of their own obtainable unanswered items.
+// The item stays unanswered (no answer, grade, or exclusion is written) and the
+// first skip time is kept on resend or concurrent sends. Answered, excluded
+// (stopped/invalidated/saved) items and non-in_progress sessions are rejected
+// without writing anything. Completion and exclusion saving stay with
+// answer/resume; the response only projects the current state.
+export function skipStudyItem(
+  connection: Connection,
+  sessionId: number,
+  itemId: number,
+) {
+  return connection.db.transaction(
+    (tx) => {
+      const userId = requireLocalLearner({ db: tx });
+      const session = owned(tx, sessionId, userId);
+      const row = itemRow(tx, sessionId, itemId);
+      const skipped = (skippedAt: number, replayed: boolean) => ({
+        item: { id: row.item.id, position: row.item.position, skippedAt },
+        session: summary(tx, session),
+        replayed,
+      });
+      if (
+        row.item.answeredAt !== null ||
+        session.status !== 'in_progress' ||
+        itemState(row.item, row.questionStatus, row.version.invalidatedAt) ===
+          'excluded'
+      )
+        throw new StudyError('conflict');
+      if (row.item.skippedAt !== null) return skipped(row.item.skippedAt, true);
+      const now = Date.now();
+      const result = tx
+        .update(studyItems)
+        .set({ skippedAt: now })
+        .where(
+          and(
+            eq(studyItems.id, itemId),
+            isNull(studyItems.answeredAt),
+            isNull(studyItems.excludedAt),
+            isNull(studyItems.skippedAt),
+          ),
+        )
+        .run();
+      if (result.changes !== 1) throw new StudyError('conflict');
+      return skipped(now, false);
     },
     { behavior: 'immediate' },
   );

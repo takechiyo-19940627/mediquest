@@ -71,7 +71,10 @@ insert into study_items(id,session_id,question_version_id,position,selected_ids_
                 invalidated_by: null,
                 invalidation_reason: null,
               }
-            : row,
+            : table === 'study_items'
+              ? // Issue #41 adds nullable skipped_at; old rows read as null.
+                { ...(row as Record<string, unknown>), skipped_at: null }
+              : row,
         ),
     );
     migrateDatabase(c, migrations);
