@@ -2,6 +2,7 @@
 import { spawn, spawnSync, execFileSync } from 'node:child_process';
 import { existsSync, realpathSync } from 'node:fs';
 import { resolve, isAbsolute, join } from 'node:path';
+import { assertCodexRuntimeLocation } from './codex-runtime.mjs';
 import { pathToFileURL } from 'node:url';
 export function scopedCodexArguments(args) {
   if (args[0] !== 'exec') throw new Error('Only TAKT Codex exec is supported');
@@ -59,9 +60,10 @@ if (process.argv[1] && import.meta.url === pathToFileURL(resolve(process.argv[1]
     if ([join(cwd, '.codex/config.toml'), '/etc/codex/config.toml'].some(existsSync)) throw new Error('Additional config requires review');
     const executable = process.env.MEDIQUEST_CODEX_EXECUTABLE;
     if (!executable || !isAbsolute(executable) || resolve(executable) === resolve(process.argv[1])) throw new Error('Missing Codex executable');
-    const version = spawnSync(executable, ['--version'], { encoding: 'utf8', timeout: 10000 });
+    const runtimeExecutable = assertCodexRuntimeLocation(executable);
+    const version = spawnSync(runtimeExecutable, ['--version'], { encoding: 'utf8', timeout: 10000 });
     if (version.status !== 0 || version.stdout.trim() !== 'codex-cli 0.163.0') throw new Error('Unreviewed Codex CLI version');
-    const child = spawn(executable, args, { stdio: 'inherit' });
+    const child = spawn(runtimeExecutable, args, { stdio: 'inherit' });
     for (const signal of ['SIGTERM', 'SIGINT']) process.on(signal, () => child.kill(signal));
     child.on('error', () => { console.error('Scoped Codex launch failed'); process.exitCode = 1; });
     child.on('exit', (code, signal) => { process.exitCode = code ?? (signal ? 1 : 0); });

@@ -86,3 +86,15 @@ TAKT0.49の実装はCodex SDKを使い、editをworkspace-write、readonlyをrea
 CodexにはClaudeの文字列Bash allowlistを適用したとは主張しない。Codexの操作は限定filesystem profile内で実行され、境界外の昇格やネットワークは許可しない。npm ciやChromium取得が必要ならhostで承認済みの準備を行う。appソースと依存lifecycleの実行許可であり、全工程をOS隔離したという意味ではない。
 
 `check-takt-codex.mjs` は実TAKT loader・Codex client・SDKからwrapperを経て偽CLIへ接続し、担当分離、sandbox/profile変換、network/approval拒否を検査する。実モデル・通信・TAKT taskは動かさない。CLI版確認とこの回帰だけで実OSのdeny動作まで実証したとは扱わず、初回live再開には独立レビューと監督判断が必要。
+
+## Codex runtimeを認証ディレクトリから分離
+
+Issue52 attempt2では、`~/.local/bin/codex` の実体が `~/.codex/packages/standalone/releases/0.163.0-aarch64-apple-darwin/bin/codex` だった。filesystem profileの `~/.codex = deny` がAGENTS読込み用helper自身のexecを拒否した。macOS Seatbeltでこのdenyだけを掛けた最小再現でも元リンクはexit71、同一バイナリの別配置は `--version` exit0になった。これは実行位置の衝突の再現であり、全profileやモデル/TAKT実行成功の証拠とは別である。
+
+秘密ディレクトリのdenyを緩めず、`scripts/codex-runtime.mjs` で版固定のnative executableと同梱 `codex-code-mode-host` だけをGit管理外 `.takt/runtime/codex-0.163.0-darwin-arm64/` にコピーする。認証・設定・履歴はコピーしない。両artifactのSHA256をレビュー対象として固定し、既存出力先・異なる版/内容/プラットフォームは拒否する。launcherは毎回hashを確認し、失敗時にPATHや元リンクへfallbackしない。wrapperもrealpathがcredential deny対象配下でないことを確認する。グローバルのCodex配置は変更しない。
+
+```sh
+node scripts/codex-runtime.mjs prepare /path/to/installed/codex .takt/runtime/codex-0.163.0-darwin-arm64
+```
+
+このコピーはTAKTを起動する管理側repoに事前準備する。workerの実装対象やGit成果物に含めない。`.takt`はworkerからreadonlyであり、ユーザー領域の認証情報は従来どおりdenyのまま。Issue52のqueue/retry回数はこの準備で変更しない。次回の実タスク再開は独立レビューと監督判断後に行う。
