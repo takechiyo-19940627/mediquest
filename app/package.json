@@ -20,7 +20,9 @@
     "start": "node .output/server/index.mjs",
     "db:generate": "drizzle-kit generate",
     "db:migrate": "node scripts/db-migrate.ts",
-    "db:seed": "node scripts/db-seed.ts"
+    "db:seed": "node scripts/db-seed.ts",
+    "db:backup": "node scripts/db-backup.ts",
+    "db:restore": "node scripts/db-restore.ts"
   },
   "dependencies": {
     "@nuxt/ui": "4.12.0",

@@ -66,7 +66,7 @@ MEDIQUEST_DB_PATH=/absolute/data/mediquest.sqlite npm run db:seed
 
 生成したdrizzle内のSQL・snapshot・journalはレビューしてGitに記録します。migrateは再適用可能です。seedはID 1のローカル管理者を作成し、既存管理者の名前を保持します。既存learnerを管理者へ昇格しません。起動やimport時に移行・seedを自動実行しません。
 
-`npm run test:integration` は一時ディレクトリ内の新規DBのみを使用し、移行再適用、再接続での保持、seedの冪等性、FK・NOT NULL・role制約を確認します。実データを使いません。実データ投入前には停止中のDBコピーまたはSQLite対応のオンラインバックアップと復元を別途検証してください。
+`npm run test:integration` は一時ディレクトリ内の新規DBのみを使用し、移行再適用、再接続での保持、seedの冪等性、FK・NOT NULL・role制約を確認します。実データを使いません。実データ投入前には下記「バックアップと別パスへの復元検証」の手順で確認してください。
 
 Drizzle Kit追加後のmoderate 4件は開発用ローダー経由の旧esbuildからの伝播です。対象はesbuild自身の開発サーバーで、移行生成・適用では起動していません。Kitの旧版への自動降格は行わず、上流修正を追跡します。
 
@@ -296,3 +296,31 @@ schema/移行/依存の追加はありません。`study_sessions` は単一利�
 - 停止と開始/復習開始/回答/スキップは IMMEDIATE transaction の先後で直列化されます。回答が先なら保存済み採点を保持し、停止が先なら回答は409で回答列はnullのままです。どちらの順でも停止版への新規採点は起きません。UPDATE失敗時はrollbackし、安全な500とno-storeだけを返し、秘密を応答・ログに出しません。再起動後も停止状態と再送の結果は保持されます。
 
 出題停止は一方向で、停止解除・再開は対象外です。再開がないため古いstop要求の再送が別の状態を上書きすることはなく、独立したidempotency keyは不要です。将来再開を導入する場合は、古いstop要求の再送が新しい再開を無効化しないよう別途照合（version照合など）が必要です。公開済み問題を修正する改訂（新version作成と旧版停止の同時処理）は別途未実装のままで、単独のstopはその代替ではなく、本機能で改訂機能を完了扱いしません。schema・migration・依存の変更はありません。HTTP経路、空body、初回/再送とも200、`id/status/replayed` の応答形、一方向限定は Issue #50 の実装契約であり、既存docsの規定（`questions.status` による全版停止、既存の停止判定）とは区別します。
+
+## バックアップと別パスへの復元検証（Issue #52）
+
+アプリを停止したローカル運用向けです。常時オンライン運用は保証しません。
+バックアップには教材・正解・回答・履歴など全データが含まれます。
+Git管理外の保管ディレクトリを用意し、共有しないでください。
+生成ファイルの権限は所有者の読み書きのみ（0600）です。
+同期・暗号化・世代管理・自動スケジュールは本CLIの対象外です。
+
+1. アプリとDBを利用する他のプロセスを停止します。
+2. appディレクトリで、現在のDBと未使用の出力先を絶対パスで指定します。
+   `MEDIQUEST_DB_PATH=/absolute/current.sqlite npm run db:backup -- /absolute/backups/snapshot.sqlite`
+3. バックアップを別の未使用パスへ復元して検査します。
+   `npm run db:restore -- /absolute/backups/snapshot.sqlite /absolute/restored.sqlite`
+4. `MEDIQUEST_DB_PATH` を `/absolute/restored.sqlite` に切り替えて起動します。
+   `MEDIQUEST_DB_PATH=/absolute/restored.sqlite npm run start`
+5. 公開セット、演習の再開、履歴の読み取りを確認します。元DBとバックアップは削除せず保管します。
+
+入力は存在する通常ファイル、出力は存在しないファイルに限定します。
+出力の親ディレクトリを事前作成し、シンボリックリンクを含まない絶対パスを指定してください。
+既存出力や同名のSQLite sidecarがある場合は拒否し、上書きしません。
+SQLiteドライバーのbackup APIでWAL内のcommitも含めてコピーします。
+検査済みの一時ファイルを排他的に公開するため、失敗時は新しい出力へ切り替えないでください。
+
+対応するschemaは、このコードの `drizzle/` と移行履歴・実schemaが一致するDBのみです
+（現在0000〜0008）。整合性と外部キーも検査します。未知・未来・旧schemaを拒否し、
+自動migrationはしません。旧schemaのバックアップは対応するコード版で扱い、
+既存のmigration操作とは分離してください。既存DBの上書き・削除やオンラインrestoreは行いません。
