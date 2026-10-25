@@ -139,7 +139,7 @@ TAKT #10の承認連携が未解決のため監督下の個別実装です。既
 
 ## 採用順序と明示公開API（Issue #24）
 
-管理者が確認済み候補の採用順を保存し、その集合を明示公開できます。公開後の本人限定演習開始/問題取得はIssue #28を参照してください。演習UIは未実装です。回答確定APIはIssue #30を参照してください。公開メタデータの一覧/詳細はIssue #26の節を参照してください。管理UI、内容編集、公開停止、改訂・複製も対象外です。TAKT #10停止中の監督下実装で、演習画面の人による合意とは独立しています。
+管理者が確認済み候補の採用順を保存し、その集合を明示公開できます。公開後の本人限定演習開始/問題取得はIssue #28を参照してください。演習UIは未実装です。回答確定APIはIssue #30を参照してください。公開メタデータの一覧/詳細はIssue #26の節を参照してください。管理者の明示的な公開停止はIssue #46の節を参照してください。管理UI、内容編集、改訂・複製は対象外です。TAKT #10停止中の監督下実装で、演習画面の人による合意とは独立しています。
 
 - `GET /api/admin/sets/:id`: candidatesとは別に採用順のitems（versionId/position/questionId/内容fingerprint/確認情報など）、revision、publishFingerprintを返します。
 - `PUT /api/admin/sets/:id/items`: `{ "expectedRevision": 0, "versionIds": [2, 1] }`。0〜10版を順番どおり全置換します。空集合もdraft保存可能です。確認済み・active・成功run由来の当該セット/教材の版のみ採用でき、版/論理問題の重複を拒否します。同じ現行集合なら再検証後に変更なしで200、異なる集合は期待revision一致時だけ保存してrevisionを1増やします。古い操作がABA後の集合を復活させる更新は行いません。
@@ -257,3 +257,16 @@ schema/移行/依存の追加はありません。`study_sessions` は単一利�
 - session/items の保存は同じIMMEDIATE transactionで、途中失敗は全てrollbackし安全な500とno-storeだけを返します。GET・履歴は書き込みをしません。権限は既存の固定ローカル利用者（admin/learner）・socket/Host/Origin・no-store境界を共有し、learnerの管理APIは引き続き403です。
 
 移行 `0008_study_session_review` は `study_sessions` を再作成し、`mode` のCHECKを `normal/review` に拡張、nullableの `parent_session_id`（self FK、ON DELETE restrict）と `(normal かつ parent null) または (review かつ parent 非null かつ parent≠自身)` のCHECKを追加します。0006と同じく旧行の新列には明示的に NULL をコピーし、既存の演習・回答・スキップ・除外・不備・報告・公開データ・FKを保持し、再適用は無変更です。アプリ停止中に既存の移行コマンドを実行してください。復習の経路/本文、完了親限定、公開停止セットからの新規復習拒否（409）、親position値の保持、再復習許可、`parentSessionId` DTO、公開集合外の版を409とする扱いは Issue #44 の実装契約であり、既存docsの規定（mode/parent列・誤答版での新規作成・非置換・停止/不備除外・公開停止による新規開始停止）とは区別します。
+
+## 管理者の明示的なセット公開停止API（Issue #46）
+
+管理者が公開済みセットを明示的に `archived` へ遷移させ、新規の演習開始だけを止めます。`docs/screens-and-data-model.md` の `status` (draft/published/archived)、管理セット画面の「公開済みは閲覧・公開停止・改訂用複製」、「公開停止は新規開始を止めるが進行中演習・履歴は保持」を実装します。UI（確認ダイアログを含む）、改訂用複製、再公開・停止解除、全版の問題停止、不備確定の変更、内容編集、監査履歴（archivedAt/by列）、削除、認証拡張は対象外です。自動停止は導入せず、管理者の明示操作だけが停止します。
+
+- `POST /api/admin/sets/:setId/archive` に空JSON `{}` を送ります。`user`/`status`/`revision`/`expectedRevision` などクライアントが状態や本人を指定するフィールド、配列・非オブジェクトは400で、入力検証はセット検索より先です。不存在は404、draft・公開者/時刻の欠けた公開記録不整合（published/archivedとも）は409です。独立したidempotency keyやexpectedRevisionは受け取りません。
+- `published` かつ公開者/時刻がある場合だけ `archived` へ更新し、既存の安全な nextRevision で `revision` を1増やします。既に `archived` で公開記録があるセットへの再送（並行送信を含む）は同じ保存状態を返し、revisionは増えません。初回/再送とも200で、応答は `id/status/revision/publishedBy/publishedAt/replayed` の明示DTOです。
+- 更新するのは `question_sets.status/revision` の1行だけです。公開日時・公開者・`publish_request_revision`/`publish_request_fingerprint`、採用集合（`set_items`）、版内容、教材、問題の `status`、不備・報告、演習・回答・採点・成績は変更しません。停止だけで問題を `stopped`/不備版にしません。
+- 停止後の既存APIの効果（既存の判定で動作し、本Issueではコード変更なし）: `GET /api/sets` から消え、`GET /api/sets/:id` は404。新しい通常開始は既存の404、新しい復習開始は既存の409で拒否します。同一開始キーの通常/復習再送は保存済みsessionを返し、既存sessionのGET・履歴・resume・skip・answer・不備報告と既存復習の利用は継続します。管理一覧/詳細は `archived` と固定内容を引き続き取得できます。
+- 停止後の古い公開要求の再送は409で再公開しません（`publishSet` はpublished再送のみ許可）。採用集合の変更も409です。
+- IMMEDIATE transactionで権限と対象セットを読み、競合するarchiveと開始要求は直列化されます。開始が先なら既存sessionを保持し、archiveが先なら新規開始を拒否します。UPDATE失敗時はrollbackし、安全な500とno-storeだけを返し、秘密を応答・ログに出しません。ローカル管理者/socket/Host/Origin/no-store、512 KiBの受信上限と固定エラーを再利用し、learnerは403です。GETは書き込みません。
+
+公開停止は一方向で、再公開・停止解除は対象外です。公開済み内容がAPI上不変な現段階に限り、保存状態そのものをキーとして一度だけ遷移させます。将来再公開を導入する場合は、古いarchive要求が新しい公開を停止しないよう別途版照合（expectedRevision等）が必要です。これは未合意の再公開機能を先取りしないための制限です。新しい改訂版の作成と旧版停止の同時処理は後続の改訂Issueで扱い、単独のarchiveはその代替ではありません。schema・migration・依存の変更はありません。HTTP経路、初回/再送とも200、revisionの加算、キー不要は Issue #46 の実装契約であり、既存docsの規定（status archived、公開停止による新規開始停止、既存演習・履歴の保持）とは区別します。
