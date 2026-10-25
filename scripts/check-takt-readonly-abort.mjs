@@ -51,3 +51,24 @@ for (const single of [false, true]) {
   assert.equal(deps.state.status, 'completed');
 }
 console.log('Patched real TAKT runloop: readonly abort preserves evidence; editable/undefined retry; success completes; continuous and single iteration, direct and nested failure paths passed.');
+
+// Phase3's choice precedes the host gate: preserve a genuine abort even if the gate passes.
+for (const nextStep of ['review', 'ABORT']) {
+  const { deps, counts } = scenario(true, false, false);
+  deps.resolveDoneTransition = () => ({ nextStep });
+  const result = await runSingleWorkflowIteration(deps);
+  assert.equal(counts().gates, 1);
+  assert.equal(result.nextStep, nextStep);
+  assert.equal(result.isComplete, nextStep === 'ABORT');
+}
+{
+  const { deps, counts } = scenario(true, true, false);
+  deps.resolveDoneTransition = () => ({ nextStep: 'review' });
+  const first = await runSingleWorkflowIteration(deps);
+  assert.equal(first.nextStep, 'fixture', 'failed host gate must retain implement/fix');
+  assert.equal(first.isComplete, false);
+  const second = await runSingleWorkflowIteration(deps);
+  assert.equal(second.nextStep, 'review', 'only successful host gate releases host-ready work');
+  assert.equal(counts().gates, 2);
+}
+console.log('Preselected ABORT remains ABORT after host success; host-ready proceeds to review only after gate success. Judge semantics remain model-dependent.');

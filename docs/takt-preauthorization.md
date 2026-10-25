@@ -98,3 +98,9 @@ node scripts/codex-runtime.mjs prepare /path/to/installed/codex .takt/runtime/co
 ```
 
 このコピーはTAKTを起動する管理側repoに事前準備する。workerの実装対象やGit成果物に含めない。`.takt`はworkerからreadonlyであり、ユーザー領域の認証情報は従来どおりdenyのまま。Issue52のqueue/retry回数はこの準備で変更しない。次回の実タスク再開は独立レビューと監督判断後に行う。
+
+## host-ready判定と品質判定の区別
+
+Issue52 attempt3ではPhase3 judgeがhostゲート前に「全7未確認」を理由にABORTを選び、その後host全7が成功しても保存済み判定が適用された。実装者向けinstructionsだけでなく、judgeが読むimplement/fixのrulesを「実装/修正完了、host検証へ引継ぎ可能」と定義する。sandbox制約や今回hostゲート待ちは引継ぎ条件に含め、品質成功とは区別する。実装自体の進行不能、仕様・認証判断、既定失敗上限は停止理由として維持する。
+
+全7hostゲートは省略せず、失敗ならreviewへ進まない。成功しても真のABORTを強制的に上書きしない。実runloop回帰では、事前ABORT+host成功の元挙動、host-ready+host失敗の同工程保持、成功後のreview遷移を検査する。静的条件テストと偽response回帰は実モデルの語義判断の安定性を保証しない。Issue52の到達済み再試行上限やqueueはこの修正で変更しない。

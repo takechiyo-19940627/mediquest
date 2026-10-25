@@ -42,9 +42,9 @@ steps:
         - name: implement.md
           format: report
     rules:
-      - condition: 実装と必要な検証が完了
+      - condition: 実装が完了しhost全7検証へ引継ぎ可能。sandbox制約やhost検証待ちはこの条件に含む（品質成功の宣言ではない）
         next: review
-      - condition: 進行不能または仕様判断が必要
+      - condition: 実装自体が進行不能、仕様判断または認証対応が必要。sandbox制約やhost検証待ちだけでは該当しない
         next: ABORT
     quality_gates:
       - type: command
@@ -81,9 +81,9 @@ steps:
         - name: fix.md
           format: report
     rules:
-      - condition: 修正と再検証が完了
+      - condition: 修正が完了しhost全7再検証へ引継ぎ可能。sandbox制約やhost検証待ちはこの条件に含む（品質成功の宣言ではない）
         next: review
-      - condition: 進行不能または同じ失敗を繰り返す
+      - condition: 修正自体が進行不能、仕様判断または認証対応が必要、または既定の失敗上限へ到達。sandbox制約やhost検証待ちだけでは該当しない
         next: ABORT
     quality_gates:
       - type: command
