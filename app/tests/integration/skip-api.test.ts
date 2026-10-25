@@ -30,6 +30,17 @@ const skip = (s: number, i: number, body: unknown = {}) =>
 const answer = (s: number, i: number, selectedIds: string[]) =>
   fetch(`${path(s, i)}/answer`, json({ selectedIds }));
 const resume = (s: number) => fetch(`/api/sessions/${s}/resume`, json({}));
+const report = async (s: number, i: number): Promise<number> => {
+  const r = await fetch(`${path(s, i)}/reports`, json({ message: '不備' }));
+  expect(r.status).toBe(201);
+  return (await r.json()).id;
+};
+const resolve = (reportId: number) =>
+  fetch(`/api/admin/reports/${reportId}/resolution`, {
+    method: 'PUT',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({ decision: 'confirmed', note: '理由' }),
+  });
 const create = async (): Promise<Session> =>
   (
     await (
@@ -405,6 +416,162 @@ describe('skip HTTP', async () => {
     );
     expect(JSON.stringify(getServerLogs())).not.toMatch(
       /PRIVATE_SQL|SECRET_EXPLANATION|SECRET_QUOTE|SECRET_SOURCE/,
+    );
+  });
+  // Issue #41: a real resolution PUT and skip POST meet over HTTP. The race
+  // may land either way (skip first 200, confirmation first 409); both
+  // sequential orders are then driven explicitly so each outcome is covered.
+  it('excludes the item whichever way confirmation and skip race over HTTP, drops it from the next item and counts, and never writes an answer', async () => {
+    const s = await create();
+    const [a, b, c] = s.items as [Item, Item, Item];
+    const versionOf = (item: Item) =>
+      f.c.client
+        .prepare(
+          'select invalidated_at,invalidated_by,invalidation_reason from question_versions where id=(select question_version_id from study_items where id=?)',
+        )
+        .get(item.id);
+    const confirmed = async (
+      r: Awaited<ReturnType<typeof fetch>>,
+      reportId: number,
+    ): Promise<number> => {
+      expect(r.status).toBe(200);
+      const body = await r.json();
+      expect(body).toEqual({
+        id: reportId,
+        status: 'confirmed',
+        resolvedBy: 1,
+        resolvedAt: expect.any(Number),
+        resolutionNote: '理由',
+        replayed: false,
+      });
+      return body.resolvedAt;
+    };
+    // Order-independent invariants once the version is invalidated: GET,
+    // history and the item DTO project the exclusion without writing it, the
+    // item leaves the next item and the eligible/skipped counts, the answer
+    // columns stay null, and a later skip or answer is rejected unchanged.
+    const excluded = async (
+      item: Item,
+      skippedAt: number | null,
+      resolvedAt: number,
+      next: number | null,
+      excludedCount: number,
+    ) => {
+      expect(versionOf(item)).toEqual({
+        invalidated_at: resolvedAt,
+        invalidated_by: 1,
+        invalidation_reason: '理由',
+      });
+      const row = itemRow(item.id);
+      expect(row).toMatchObject({
+        skipped_at: skippedAt,
+        answered_at: null,
+        selected_ids_json: null,
+        is_correct: null,
+        excluded_at: null,
+        excluded_reason: null,
+      });
+      const state = await getSession(s.id);
+      expect(state).toMatchObject({
+        status: 'in_progress',
+        currentItemId: next,
+        statistics: {
+          totalItemCount: 3,
+          excludedCount,
+          eligibleCount: 3 - excludedCount,
+          answeredEligibleCount: 0,
+          unansweredEligibleCount: 3 - excludedCount,
+          skippedUnansweredCount: 0,
+        },
+      });
+      expect(state.items[item.position]).toEqual({
+        id: item.id,
+        position: item.position,
+        state: 'excluded',
+        excludedReason: 'invalidated',
+        skippedAt,
+      });
+      expect(await listed(s.id)).toMatchObject({
+        currentItemId: next,
+        statistics: state.statistics,
+      });
+      const dto = await (await fetch(path(s.id, item.id))).json();
+      expect(dto).toEqual({
+        id: item.id,
+        position: item.position,
+        state: 'excluded',
+        excludedReason: 'invalidated',
+      });
+      noSecrets([state, dto]);
+      const late = await skip(s.id, item.id);
+      expect(late.status).toBe(409);
+      noSecrets(await late.json());
+      expect((await answer(s.id, item.id, ['SECRET_ANSWER'])).status).toBe(409);
+      expect(itemRow(item.id)).toEqual(row);
+    };
+    // 1. Concurrent PUT and POST: the confirmation always lands; the skip is
+    //    accepted only if it committed first, and then keeps its timestamp.
+    const first = await report(s.id, a.id);
+    const [put, raced] = await Promise.all([resolve(first), skip(s.id, a.id)]);
+    const resolvedA = await confirmed(put, first);
+    expect([200, 409]).toContain(raced.status);
+    const racedBody = await raced.json();
+    noSecrets(racedBody);
+    if (raced.status === 200)
+      expect(racedBody).toMatchObject({
+        item: { id: a.id, position: 0, skippedAt: expect.any(Number) },
+        replayed: false,
+      });
+    const skippedA: number | null =
+      raced.status === 200 ? racedBody.item.skippedAt : null;
+    await excluded(a, skippedA, resolvedA, b.id, 1);
+    // 2. Skip first, then confirm: the skip stays recorded but the item is
+    //    excluded and no longer counted as skipped-unanswered.
+    const skipB = await skip(s.id, b.id);
+    expect(skipB.status).toBe(200);
+    const skippedB: number = (await skipB.json()).item.skippedAt;
+    const second = await report(s.id, b.id);
+    const resolvedB = await confirmed(await resolve(second), second);
+    await excluded(b, skippedB, resolvedB, c.id, 2);
+    // 3. Confirm first, then skip: the skip is rejected with 409.
+    const third = await report(s.id, c.id);
+    const resolvedC = await confirmed(await resolve(third), third);
+    await excluded(c, null, resolvedC, null, 3);
+    // Resume saves the exclusions and completes; answers were never written.
+    expect(await (await resume(s.id)).json()).toMatchObject({
+      status: 'completed',
+      completedAt: expect.any(Number),
+      currentItemId: null,
+      statistics: {
+        excludedCount: 3,
+        eligibleCount: 0,
+        unansweredEligibleCount: 0,
+        skippedUnansweredCount: 0,
+        accuracyStatus: 'no_eligible_items',
+      },
+    });
+    expect(
+      f.c.client
+        .prepare(
+          'select excluded_at,excluded_reason,skipped_at,answered_at,selected_ids_json,is_correct from study_items where session_id=? order by position',
+        )
+        .all(s.id),
+    ).toEqual(
+      [
+        [resolvedA, skippedA],
+        [resolvedB, skippedB],
+        [resolvedC, null],
+      ].map(([excluded_at, skipped_at]) => ({
+        excluded_at,
+        excluded_reason: 'invalidated',
+        skipped_at,
+        answered_at: null,
+        selected_ids_json: null,
+        is_correct: null,
+      })),
+    );
+    f.c.client.exec(
+      'update question_versions set invalidated_at=null,invalidated_by=null,invalidation_reason=null',
     );
   });
 });
