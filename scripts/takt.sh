@@ -28,6 +28,8 @@ for arg in "$@"; do
       "${runtime_node[@]}" scripts/takt-local-patch.mjs verify "${TAKT_PACKAGE_DIR:?Select the reviewed local TAKT installation}"
       "${runtime_node[@]}" scripts/takt-preflight.mjs
       export MEDIQUEST_CLAUDE_EXECUTABLE="$(command -v claude)"
+      export MEDIQUEST_CODEX_EXECUTABLE="$(command -v codex)"
+      export TAKT_CODEX_CLI_PATH="$repo_root/scripts/codex-scoped.mjs"
       export TAKT_CLAUDE_CLI_PATH="$repo_root/scripts/claude-trusted.mjs"
       break
       ;;

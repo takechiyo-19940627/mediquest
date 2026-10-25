@@ -74,3 +74,15 @@ node scripts/check-takt-readonly-abort.mjs /new/local/copy
 ```
 
 queue adapterは選択packageを検証してから読み込み、同じ実パスを `TAKT_PACKAGE_DIR` としてlauncherへ渡す。launcherも実行モードでは再検証する。未patchのglobal既定や改変コピーは実行を拒否する。診断doctor等は従来どおり実行できる。実行時にpatchを自動生成・適用しない。ローカルコピーへの準備と回帰はTAKT task/model/ネットワークを動かさない。
+
+## TAKT内の実装・修正をCodexへ切替
+
+ユーザーの明示依頼により、workflowのimplement/fixだけ `provider: codex`、`required_permission_mode: edit`、`provider_options.codex.network_access:false` とする。plan/review/finalizeはproject既定のClaude/readonlyを維持する。TAKTの外で代行する切替ではなく、host全7ゲート・失敗上限・ローカルTAKT patch・独立レビューは同一である。モデル名は指定しない。
+
+TAKT0.49の実装はCodex SDKを使い、editをworkspace-write、readonlyをread-onlyへ変換する。Claudeのallowed_toolsと `.claude/settings.json` はCodexを制御しないため、正式な `TAKT_CODEX_CLI_PATH` で `scripts/codex-scoped.mjs` を通す。Codex CLI0.163.0を起動時に確認し、未検証の版は停止する。SDKの旧JSONフラグは現行の `--json` へ変換する。
+
+[公式permissions資料](https://developers.openai.com/codex/permissions) に従い、legacy `--sandbox` を同等の組込みprofileを継承するnamed profileへ変換する。これに制御dirのreadonlyと秘密ファイルのdenyを加え、network無効、approval_policy=never、web_search無効を固定する。user config/rulesは読まず認証ストレージは従来どおり使用する。実際のGit worktree rootと起動cwdのrealpath一致を必須とし、subdirectory起動を拒否する。project/system configが存在する場合はlegacy sandbox設定によるprofile無効化を避けるため起動を拒否し、監督へ確認を返す。グローバル設定は変更しない。
+
+CodexにはClaudeの文字列Bash allowlistを適用したとは主張しない。Codexの操作は限定filesystem profile内で実行され、境界外の昇格やネットワークは許可しない。npm ciやChromium取得が必要ならhostで承認済みの準備を行う。appソースと依存lifecycleの実行許可であり、全工程をOS隔離したという意味ではない。
+
+`check-takt-codex.mjs` は実TAKT loader・Codex client・SDKからwrapperを経て偽CLIへ接続し、担当分離、sandbox/profile変換、network/approval拒否を検査する。実モデル・通信・TAKT taskは動かさない。CLI版確認とこの回帰だけで実OSのdeny動作まで実証したとは扱わず、初回live再開には独立レビューと監督判断が必要。
