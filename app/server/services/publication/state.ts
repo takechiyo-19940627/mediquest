@@ -13,6 +13,17 @@ import { fingerprint, ReviewError } from '../review/input';
 import { validateGeneration } from '../generation/validation';
 export type DatabaseReader = Pick<Connection['db'], 'select'>;
 export type SetRow = typeof questionSets.$inferSelect;
+// The single safe step of question_sets.revision shared by selection, publish,
+// archive and (Issue #48) draft content edits.
+export function nextRevision(revision: number) {
+  if (
+    !Number.isSafeInteger(revision) ||
+    revision < 0 ||
+    revision === Number.MAX_SAFE_INTEGER
+  )
+    throw new ReviewError('conflict');
+  return revision + 1;
+}
 export function selectedItems(db: DatabaseReader, setId: number) {
   return db
     .select()
