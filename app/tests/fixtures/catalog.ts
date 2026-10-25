@@ -12,7 +12,9 @@ export const privateMarkers = [
   'SECRET_QUOTE',
   'SECRET_SOURCE',
 ];
-export async function catalogFixture() {
+// itemCount selects how many of the three generated candidates are published
+// (default 2 keeps the existing tests; Issue #41 skip tests use all 3).
+export async function catalogFixture(itemCount = 2) {
   const f = await publicationFixture();
   try {
     f.c.client.exec(
@@ -26,7 +28,7 @@ export async function catalogFixture() {
       });
     replaceItems(f.c, f.run.setId, {
       expectedRevision: 0,
-      versionIds: f.ids.slice(0, 2),
+      versionIds: f.ids.slice(0, itemCount),
     });
     const d = f.detail();
     publishSet(f.c, f.run.setId, {

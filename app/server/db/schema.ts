@@ -263,6 +263,8 @@ export const studyItems = sqliteTable(
     >(),
     isCorrect: integer('is_correct', { mode: 'boolean' }),
     answeredAt: integer('answered_at'),
+    // Issue #41: the owner's explicit skip. Stays unanswered; kept after answering.
+    skippedAt: integer('skipped_at'),
     excludedReason: text('excluded_reason', {
       enum: ['stopped', 'invalidated'],
     }),

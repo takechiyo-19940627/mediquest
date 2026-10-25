@@ -60,10 +60,29 @@ export function itemState(
         ? ('excluded' as const)
         : ('unanswered' as const);
 }
+// Issue #41: shared next-item rule for start/GET/answer/resume/history.
+// Items arrive in stored position order. Ordinary unanswered items come first,
+// then skipped unanswered items in the same stored order. Skipping again never
+// rotates the order, so an all-skipped session returns to its first skip.
+export function nextItemId(
+  items: {
+    id: number;
+    state: 'excluded' | 'answered' | 'unanswered';
+    skippedAt: number | null;
+  }[],
+) {
+  const unanswered = items.filter((item) => item.state === 'unanswered');
+  return (
+    unanswered.find((item) => item.skippedAt === null)?.id ??
+    unanswered[0]?.id ??
+    null
+  );
+}
 export function statistics(
   items: {
     state: 'excluded' | 'answered' | 'unanswered';
     isCorrect: boolean | null;
+    skippedAt?: number | null;
   }[],
 ) {
   const totalItemCount = items.length;
@@ -80,7 +99,11 @@ export function statistics(
     excludedCount,
     eligibleCount,
     answeredEligibleCount,
+    // Skipped items stay inside unansweredEligibleCount; this only counts them.
     unansweredEligibleCount: eligibleCount - answeredEligibleCount,
+    skippedUnansweredCount: items.filter(
+      (i) => i.state === 'unanswered' && (i.skippedAt ?? null) !== null,
+    ).length,
     correctEligibleCount,
     accuracy: eligibleCount ? correctEligibleCount / eligibleCount : null,
     accuracyStatus: eligibleCount

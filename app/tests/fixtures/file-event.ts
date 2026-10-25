@@ -1,10 +1,14 @@
-import { readFileSync, watchFile, unwatchFile } from 'node:fs';
-// Observe a request-specific event, including events written before watch registration.
+import { readFileSync } from 'node:fs';
+// Observe a request-specific event, including events written before observation starts.
+// The file is re-read on a fixed interval instead of fs.watchFile: watchFile only
+// reports changes against a baseline stat taken asynchronously after registration,
+// so writes landing before that baseline (e.g. under threadpool load) were never seen.
 export function waitForFileEvent(
   file: string,
   event: string,
   signal: AbortSignal,
   deadlineMs = 10000,
+  intervalMs = 20,
 ) {
   return new Promise<void>((resolve, reject) => {
     let settled = false;
@@ -12,7 +16,7 @@ export function waitForFileEvent(
       if (settled) return;
       settled = true;
       clearTimeout(timer);
-      unwatchFile(file, check);
+      clearInterval(poll);
       signal.removeEventListener('abort', abort);
       if (error) reject(error);
       else resolve();
@@ -24,7 +28,7 @@ export function waitForFileEvent(
         finish(new Error('Test event read failed'));
       }
     };
-    watchFile(file, { interval: 20 }, check);
+    const poll = setInterval(check, intervalMs);
     const timer = setTimeout(
       () => finish(new Error('Test provider event deadline exceeded')),
       deadlineMs,

@@ -3,6 +3,7 @@ import {
   answerInput,
   gradeAnswer,
   itemState,
+  nextItemId,
   statistics,
 } from '../../server/services/study/answers';
 const choices = [
@@ -62,6 +63,8 @@ it('keeps answered stopped items eligible, explicit exclusion first, and zero de
     eligibleCount: 2,
     answeredEligibleCount: 1,
     unansweredEligibleCount: 1,
+    // Issue #41 adds skippedUnansweredCount; the other keys are unchanged.
+    skippedUnansweredCount: 0,
     correctEligibleCount: 1,
     accuracy: 0.5,
     accuracyStatus: 'available',
@@ -70,5 +73,66 @@ it('keeps answered stopped items eligible, explicit exclusion first, and zero de
     accuracy: null,
     accuracyStatus: 'no_eligible_items',
     correctEligibleCount: 0,
+  });
+});
+// Issue #41 AC-2/AC-3: ordinary unanswered first in stored order, then skipped
+// unanswered in stored order; answered/excluded never become current.
+it('selects ordinary unanswered before skipped unanswered in stored order and counts only eligible skips', () => {
+  const unanswered = (id: number, skippedAt: number | null = null) => ({
+    id,
+    state: 'unanswered' as const,
+    isCorrect: null,
+    skippedAt,
+  });
+  const answered = (id: number, skippedAt: number | null = null) => ({
+    id,
+    state: 'answered' as const,
+    isCorrect: true,
+    skippedAt,
+  });
+  const excluded = (id: number, skippedAt: number | null = null) => ({
+    id,
+    state: 'excluded' as const,
+    isCorrect: null,
+    skippedAt,
+  });
+  expect(nextItemId([])).toBeNull();
+  expect(nextItemId([unanswered(1), unanswered(2)])).toBe(1);
+  // A skipped first item yields to the later ordinary unanswered item.
+  expect(nextItemId([unanswered(1, 10), unanswered(2), unanswered(3)])).toBe(2);
+  // Skipped items return in stored order, not by skip time, so the newest skip
+  // never rotates ahead of the first.
+  expect(
+    nextItemId([unanswered(1, 30), unanswered(2, 10), unanswered(3, 20)]),
+  ).toBe(1);
+  expect(nextItemId([answered(1, 5), unanswered(2, 10), answered(3)])).toBe(2);
+  expect(nextItemId([excluded(1, 5), answered(2), unanswered(3, 10)])).toBe(3);
+  expect(nextItemId([excluded(1, 5), answered(2, 6), excluded(3)])).toBeNull();
+  // One skipped unanswered item stays current while unanswered.
+  expect(nextItemId([answered(1), unanswered(2, 7)])).toBe(2);
+  expect(
+    statistics([
+      unanswered(1, 10),
+      unanswered(2),
+      excluded(3, 10),
+      answered(4, 10),
+      unanswered(5, 20),
+    ]),
+  ).toEqual({
+    totalItemCount: 5,
+    excludedCount: 1,
+    eligibleCount: 4,
+    answeredEligibleCount: 1,
+    unansweredEligibleCount: 3,
+    skippedUnansweredCount: 2,
+    correctEligibleCount: 1,
+    accuracy: 0.25,
+    accuracyStatus: 'available',
+  });
+  expect(statistics([excluded(1, 10), excluded(2, 20)])).toMatchObject({
+    unansweredEligibleCount: 0,
+    skippedUnansweredCount: 0,
+    accuracy: null,
+    accuracyStatus: 'no_eligible_items',
   });
 });
