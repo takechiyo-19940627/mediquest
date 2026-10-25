@@ -1,3 +1,5 @@
 計画とIssueに沿って実装する。既存の規約・部品を優先し、learning-rustには触れない。必要なテストを追加し、bash scripts/app-command.sh quality を実行して失敗を修正する。検証はモックと一時DBを使い、実AI APIや本番データに接続しない。実行コマンドと結果を報告する。基盤Issueではapp/package.jsonにformat:check、lint、typecheck、test:unit、test:integration、test:e2e、buildを実効性のあるコマンドとして定義し、起動できるアプリとスモークテストを用意する。空の成功コマンド、テストなしの成功設定を使わない。品質ゲートやテスト期待値の変更はIssueの根拠とともに示す。コミット・push・PR・マージは行わない。
 
 実装が完成したら、sandboxで実行不能な検証は失敗・未確認として具体的に報告し、仕様・認証の進行不能と区別する。単なるsandboxの検証制約だけでblocked/ABORTにせずdoneの実装報告を返す。直後のhost全7ゲートが機械検証を行い、失敗なら同じ工程へフィードバックする。host結果を先取りして成功と言わない。既存max_stepsと同一原因の停止上限は維持する。
+
+この工程はTAKT内のCodex担当。app実装だけを編集し、制御設定/scripts/docs/履歴を変更しない。ネットワークは禁止されるため依存・ブラウザ導入が必要なら承認済みhost準備へ返す。sandbox拒否の迂回・権限昇格・外部実行は行わない。host全7ゲートの証拠が揃うまで検証成功を主張しない。

@@ -29,6 +29,10 @@ steps:
       - condition: 重大な情報不足または先行作業が未完了
         next: ABORT
   - name: implement
+    provider: codex
+    provider_options:
+      codex:
+        network_access: false
     persona: implementer
     edit: true
     instruction: implement
@@ -64,6 +68,10 @@ steps:
       - condition: 仕様矛盾または検証不能
         next: ABORT
   - name: fix
+    provider: codex
+    provider_options:
+      codex:
+        network_access: false
     persona: implementer
     edit: true
     instruction: fix
