@@ -214,7 +214,7 @@ GET は保存しません。resume / 新規回答成功の進捗同期では不�
 
 0006 は Drizzle 生成 SQL の旧表コピーで新規 nullable 列を明示 NULL に補正しています。参照される表を再作成するため移行専用接続で FK を一時停止し、全未適用移行と履歴を IMMEDIATE transaction 内で適用、全 FK 整合を確認してから commit します。失敗時は DDL・データ・履歴を rollback し、成功・失敗とも FK を復元します。アプリ稼働を止めて既存の移行コマンドを実行してください。
 
-TAKT #10 停止中の直接監督実装です。UI・通知・改訂・複製・全版停止・不備解除・復習・外部認証は対象外です。本人の未回答スキップは Issue #41 を参照してください。
+TAKT #10 停止中の直接監督実装です。UI・通知・改訂・複製・全版停止・不備解除・復習・外部認証は対象外です。本人の未回答スキップは Issue #41 を、管理者による問題全版の出題停止は Issue #50 の節を参照してください。
 
 ## 本人限定の演習履歴・中断一覧（Issue #36）
 
@@ -260,7 +260,7 @@ schema/移行/依存の追加はありません。`study_sessions` は単一利�
 
 ## 管理者の明示的なセット公開停止API（Issue #46）
 
-管理者が公開済みセットを明示的に `archived` へ遷移させ、新規の演習開始だけを止めます。`docs/screens-and-data-model.md` の `status` (draft/published/archived)、管理セット画面の「公開済みは閲覧・公開停止・改訂用複製」、「公開停止は新規開始を止めるが進行中演習・履歴は保持」を実装します。UI（確認ダイアログを含む）、改訂用複製、再公開・停止解除、全版の問題停止、不備確定の変更、内容編集、監査履歴（archivedAt/by列）、削除、認証拡張は対象外です。自動停止は導入せず、管理者の明示操作だけが停止します。
+管理者が公開済みセットを明示的に `archived` へ遷移させ、新規の演習開始だけを止めます。`docs/screens-and-data-model.md` の `status` (draft/published/archived)、管理セット画面の「公開済みは閲覧・公開停止・改訂用複製」、「公開停止は新規開始を止めるが進行中演習・履歴は保持」を実装します。UI（確認ダイアログを含む）、改訂用複製、再公開・停止解除、全版の問題停止（Issue #50 の節を参照）、不備確定の変更、内容編集、監査履歴（archivedAt/by列）、削除、認証拡張は対象外です。自動停止は導入せず、管理者の明示操作だけが停止します。
 
 - `POST /api/admin/sets/:setId/archive` に空JSON `{}` を送ります。`user`/`status`/`revision`/`expectedRevision` などクライアントが状態や本人を指定するフィールド、配列・非オブジェクトは400で、入力検証はセット検索より先です。不存在は404、draft・公開者/時刻の欠けた公開記録不整合（published/archivedとも）は409です。独立したidempotency keyやexpectedRevisionは受け取りません。
 - `published` かつ公開者/時刻がある場合だけ `archived` へ更新し、既存の安全な nextRevision で `revision` を1増やします。既に `archived` で公開記録があるセットへの再送（並行送信を含む）は同じ保存状態を返し、revisionは増えません。初回/再送とも200で、応答は `id/status/revision/publishedBy/publishedAt/replayed` の明示DTOです。
@@ -283,3 +283,16 @@ schema/移行/依存の追加はありません。`study_sessions` は単一利�
 - 確認API・公開API・採用APIとは同じtransactionで直列化されます。確認→編集は確認取消、編集→古いfingerprintの確認は409。公開→編集は409、編集→古い公開は409、編集後の新しい公開要求も再確認まで409です。同じ基準からの異なる編集は一方だけ保存され、A→B→Aの後に古い `expectedRevision` でBを再送しても復活しません。UPDATE途中の失敗は内容・確認・revisionをすべてrollbackし、安全な500とno-storeだけを返し、本文を応答・ログに出しません。
 
 成功応答が失われた場合の自動再送200（受付記録）は導入しません。クライアントは `GET /api/admin/sets/:id` で現在のrevision/fingerprint/内容を確認してから、必要なら新しい値で再送してください。引用一致と管理者確認は医学的正答性を保証しません。修正内容の総量は512 KiBの受信上限と各フィールド上限で制限され、費用保証ではありません。schema・migration・依存の変更はありません。同一行更新、stale 409、no-op契約、200/`changed` の応答形は Issue #48 の実装契約であり、既存docsの規定（編集後の再照合・再確認、公開済み版の不変）とは区別します。
+
+## 管理者による論理問題の全版出題停止API（Issue #50）
+
+管理者が一つの論理問題（`questions` の1行）を `stopped` にし、その問題の**全version**を新規の出題対象から外します。`docs/screens-and-data-model.md` の `questions.status (active/stopped)`「全版の出題停止が必要な場合に使用」と管理者の出題停止を実装します。セット単位の公開停止（Issue #46 の `archived`）、版単位の不備確定（Issue #34 の `invalidated`）とは別の操作で、どちらも置き換えません。UI、停止解除・再開、不備確定の変更、停止理由・停止者・時刻の監査列、通知、改訂用複製、公開切替、新しい認証、削除は対象外です。
+
+- `POST /api/admin/questions/:questionId/stop` に空JSON `{}` を送ります。`status`/`userId`/`reason`/`questionId` などクライアントが状態・本人・理由を指定するフィールド、配列・非オブジェクト・不正JSONは400で、入力検証は問題の検索より先です。`questionId` は正の整数以外400、不存在は404（`error.code: missing`。固定文言は既存の `reviewEndpoint` を再利用）。独立したidempotency keyやexpectedRevisionは受け取りません。Content-Type、512 KiB/10秒の受信上限、ローカル管理者/socket/Host/Origin/no-store、固定エラーは既存部品を再利用し、learner・user欠落・`MEDIQUEST_LOCAL_MODE=false` は403です。
+- `active` の問題だけを同じIMMEDIATE transaction内で `stopped` へ一度更新します。既に `stopped` の問題への再送（並行送信を含む）は同じ保存状態を返し、何も書きません。初回/再送とも200で、応答は `id/status/replayed` の明示DTOです。409になる状態はありません（CHECK制約により active/stopped 以外の値は存在しません）。
+- 更新するのは `questions.status` の1行だけです。`question_versions` の内容・確認・不備記録、`question_sets` の status/revision/採用集合、教材、演習session・回答・採点・スキップ・除外・不備報告は変更しません。停止API自体は履歴へ書き込まず、完了更新もしません。
+- 停止後の既存APIの効果（既存の `questions.status` 判定で動作し、本Issueでは catalog/study/publication のコード変更なし）: 当該問題の全versionが `availableQuestionCount`、新規通常開始、新規復習開始の対象、採用（`PUT .../items`）・公開（`POST .../publish`）の検証から外れます。他の論理問題は影響を受けません。対象が0件になった公開セットは `GET /api/sets` に残り `canStart:false`、新規開始は既存の409です。既存sessionは削除せず、同じ開始キーの再送は保存済みsessionを現在状態で投影して返します。
+- 既存の未回答itemは GET で `state:'excluded'` に投影（書き込みなし）、answer/skip は409、resume または別itemの回答成功時の進捗同期で `excluded_reason='stopped'` を一度保存し、全除外なら完了にします。GETだけでは完了を書きません。既存の回答済みitemは通常停止だけでは除外・再採点せず、選択・正誤・回答時刻・feedback・集計を保持し、同じ回答の再送は `replayed:true` です。版の不備確定（`invalidated`）は停止より常に優先して投影します。
+- 停止と開始/復習開始/回答/スキップは IMMEDIATE transaction の先後で直列化されます。回答が先なら保存済み採点を保持し、停止が先なら回答は409で回答列はnullのままです。どちらの順でも停止版への新規採点は起きません。UPDATE失敗時はrollbackし、安全な500とno-storeだけを返し、秘密を応答・ログに出しません。再起動後も停止状態と再送の結果は保持されます。
+
+出題停止は一方向で、停止解除・再開は対象外です。再開がないため古いstop要求の再送が別の状態を上書きすることはなく、独立したidempotency keyは不要です。将来再開を導入する場合は、古いstop要求の再送が新しい再開を無効化しないよう別途照合（version照合など）が必要です。公開済み問題を修正する改訂（新version作成と旧版停止の同時処理）は別途未実装のままで、単独のstopはその代替ではなく、本機能で改訂機能を完了扱いしません。schema・migration・依存の変更はありません。HTTP経路、空body、初回/再送とも200、`id/status/replayed` の応答形、一方向限定は Issue #50 の実装契約であり、既存docsの規定（`questions.status` による全版停止、既存の停止判定）とは区別します。
