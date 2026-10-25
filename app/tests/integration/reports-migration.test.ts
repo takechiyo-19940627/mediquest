@@ -74,7 +74,13 @@ insert into study_items(id,session_id,question_version_id,position,selected_ids_
             : table === 'study_items'
               ? // Issue #41 adds nullable skipped_at; old rows read as null.
                 { ...(row as Record<string, unknown>), skipped_at: null }
-              : row,
+              : table === 'study_sessions'
+                ? // Issue #44 adds nullable parent_session_id; old rows read as null.
+                  {
+                    ...(row as Record<string, unknown>),
+                    parent_session_id: null,
+                  }
+                : row,
         ),
     );
     migrateDatabase(c, migrations);

@@ -77,6 +77,7 @@ describe('study session HTTP', async () => {
         'setId',
         'status',
         'mode',
+        'parentSessionId',
         'startedAt',
         'completedAt',
         'items',
@@ -84,6 +85,7 @@ describe('study session HTTP', async () => {
         'statistics',
       ].sort(),
     );
+    expect(session).toMatchObject({ mode: 'normal', parentSessionId: null });
     const item = await (
       await fetch(`/api/sessions/${sessionId}/items/${itemId}`)
     ).json();

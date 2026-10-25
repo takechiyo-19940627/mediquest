@@ -20,6 +20,8 @@ const fields = {
   setTitle: questionSets.title,
   status: studySessions.status,
   mode: studySessions.mode,
+  // Issue #44: the direct parent of a review session (null for normal).
+  parentSessionId: studySessions.parentSessionId,
   startedAt: studySessions.startedAt,
   completedAt: studySessions.completedAt,
 };

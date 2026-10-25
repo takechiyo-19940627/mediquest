@@ -57,6 +57,13 @@
       "when": 1792900000000,
       "tag": "0007_study_item_skipped_at",
       "breakpoints": true
+    },
+    {
+      "idx": 8,
+      "version": "6",
+      "when": 1792902960000,
+      "tag": "0008_study_session_review",
+      "breakpoints": true
     }
   ]
 }

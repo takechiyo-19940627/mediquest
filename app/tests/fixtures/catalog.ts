@@ -12,10 +12,12 @@ export const privateMarkers = [
   'SECRET_QUOTE',
   'SECRET_SOURCE',
 ];
-// itemCount selects how many of the three generated candidates are published
+// itemCount selects how many of the generated candidates are published
 // (default 2 keeps the existing tests; Issue #41 skip tests use all 3).
-export async function catalogFixture(itemCount = 2) {
-  const f = await publicationFixture();
+// candidateCount sets how many candidates each set generates (Issue #44 review
+// tests publish a larger mixed set). Published position i uses f.ids[i].
+export async function catalogFixture(itemCount = 2, candidateCount = 3) {
+  const f = await publicationFixture(candidateCount);
   try {
     f.c.client.exec(
       `update sources set body='SECRET_SOURCE'; update question_versions set body='SECRET_BODY',choices_json='[{"id":"SECRET_ANSWER","label":"SECRET_CHOICE"},{"id":"b","label":"B"}]',answer_ids_json='["SECRET_ANSWER"]',explanation='SECRET_EXPLANATION',quote='SECRET_QUOTE',reviewed_by=null,reviewed_at=null;`,
