@@ -19,4 +19,5 @@
 /.takt/supervisor-queue.lock/
 /.takt/supervisor-retries.json
 /.takt/quality/
+/.takt/preparation/
 /.takt/runtime/

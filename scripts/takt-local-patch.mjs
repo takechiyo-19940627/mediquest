@@ -33,13 +33,13 @@ export function patchedTaskSource(source) {
   if (sha(source) !== taskOriginalHash) throw new Error('Unreviewed TAKT task workflow hash');
   const anchor = "    log.debug('Running workflow', {";
   if (source.split(anchor).length !== 2) throw new Error('Task preparation context mismatch');
-  return "import { prepareTaskWorkspace } from '../../../mediquest-host-prepare.mjs';\n" + source.replace(anchor, "    await prepareTaskWorkspace(projectCwd, cwd, workflowConfig.name, abortSignal);\n" + anchor);
+  return "import { resolveCloneBaseDir } from '../../../infra/task/index.js';\nimport { prepareTaskWorkspace } from '../../../mediquest-host-prepare.mjs';\n" + source.replace(anchor, "    await prepareTaskWorkspace(projectCwd, cwd, workflowConfig.name, abortSignal, undefined, { ...traceTaskMetadata, cloneBaseDir: resolveCloneBaseDir(projectCwd) });\n" + anchor);
 }
 export function verifyPatchedRuntime(dir) {
   dir = realpathSync(dir);
   const pkg = JSON.parse(readFileSync(join(dir, 'package.json')));
   const marker = JSON.parse(readFileSync(join(dir, '.mediquest-patch.json')));
-  if (pkg.name !== 'takt' || pkg.version !== '0.49.0' || marker.originalHash !== originalHash || marker.patch !== 'host-prepare-explicit-abort-v2' || marker.patchedHash !== sha(patchedSource(readFileSync(join(dir, '.mediquest-original-runloop.js'), 'utf8'))) || sha(readFileSync(join(dir, target))) !== marker.patchedHash) throw new Error('Unreviewed local TAKT patch');
+  if (pkg.name !== 'takt' || pkg.version !== '0.49.0' || marker.originalHash !== originalHash || marker.patch !== 'host-prepare-clone-provenance-v3' || marker.patchedHash !== sha(patchedSource(readFileSync(join(dir, '.mediquest-original-runloop.js'), 'utf8'))) || sha(readFileSync(join(dir, target))) !== marker.patchedHash) throw new Error('Unreviewed local TAKT patch');
   if (sha(readFileSync(join(dir, taskTarget))) !== sha(patchedTaskSource(readFileSync(join(dir, '.mediquest-original-task-workflow.js'), 'utf8'))) || readFileSync(join(dir, 'dist/mediquest-host-prepare.mjs'), 'utf8') !== helperSource()) throw new Error('Unreviewed task preparation patch');
   return dir;
 }
@@ -58,7 +58,7 @@ export function prepareRuntime(sourceDir, destination) {
   writeFileSync(join(destination, '.mediquest-original-task-workflow.js'), taskSource);
   writeFileSync(join(destination, 'dist/mediquest-host-prepare.mjs'), helperSource());
   writeFileSync(join(destination, '.mediquest-original-runloop.js'), source);
-  writeFileSync(join(destination, '.mediquest-patch.json'), JSON.stringify({ patch: 'host-prepare-explicit-abort-v2', originalHash, patchedHash: sha(patched) }, null, 2));
+  writeFileSync(join(destination, '.mediquest-patch.json'), JSON.stringify({ patch: 'host-prepare-clone-provenance-v3', originalHash, patchedHash: sha(patched) }, null, 2));
   return verifyPatchedRuntime(destination);
 }
 if (process.argv[1] && import.meta.url === pathToFileURL(resolve(process.argv[1])).href) {

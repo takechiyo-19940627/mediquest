@@ -4,7 +4,7 @@ import { mkdtempSync, writeFileSync, readFileSync, rmSync, mkdirSync } from 'nod
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { execFileSync } from 'node:child_process';
-import { runHostQuality, verifyHostQuality } from './host-quality.mjs';
+import { runHostQuality, verifyHostQuality, sourceSnapshot } from './host-quality.mjs';
 function fixture(t) {
   const root = mkdtempSync(join(tmpdir(), 'host-quality-'));
   t.after(() => rmSync(root, { recursive: true, force: true }));
@@ -51,5 +51,29 @@ test('copied evidence and interrupted running attempts never verify', t => {
   writeFileSync(join(other, '.takt/quality/latest.json'), JSON.stringify(record));
   assert.equal(verifyHostQuality(other), 1);
   record.status = 'running'; writeFileSync(path, JSON.stringify(record));
+  assert.equal(verifyHostQuality(root), 1);
+});
+
+test('real project ignore excludes only preparation records while source edits invalidate evidence', t => {
+  const root = fixture(t);
+  // Root ignore must work even when the clone has no .takt/.gitignore.
+  writeFileSync(join(root, '.gitignore'), readFileSync(new URL('../.gitignore', import.meta.url)));
+  mkdirSync(join(root, 'app/server'), { recursive: true });
+  const appSource = join(root, 'app/server/example.ts');
+  writeFileSync(appSource, 'export const value = 1;');
+  const before = sourceSnapshot(root);
+  assert.equal(runHostQuality(root, pass), 0);
+  mkdirSync(join(root, '.takt/preparation'), { recursive: true });
+  writeFileSync(join(root, '.takt/preparation/first.json'), '{"status":"prepared"}');
+  writeFileSync(join(root, '.takt/preparation/resume.json'), '{"status":"prepared"}');
+  assert.equal(sourceSnapshot(root), before);
+  assert.equal(verifyHostQuality(root), 0);
+  writeFileSync(appSource, 'export const value = 2;');
+  assert.notEqual(sourceSnapshot(root), before);
+  assert.equal(verifyHostQuality(root), 1);
+  writeFileSync(appSource, 'export const value = 1;');
+  mkdirSync(join(root, '.takt/workflows'), { recursive: true });
+  writeFileSync(join(root, '.takt/workflows/new.yaml'), 'changed workflow');
+  assert.notEqual(sourceSnapshot(root), before);
   assert.equal(verifyHostQuality(root), 1);
 });
