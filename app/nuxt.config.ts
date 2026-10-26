@@ -7,7 +7,22 @@ export default defineNuxtConfig({
     ),
   },
   compatibilityDate: '2026-10-24',
-  modules: ['@nuxt/ui', '@nuxt/eslint'],
+  modules: [
+    '@nuxt/ui',
+    '@nuxt/eslint',
+    function (_options, nuxt) {
+      if (!nuxt.options.dev) return;
+      nuxt.hook('pages:extend', (pages) => {
+        pages.push({
+          name: 'development-study-preview',
+          path: '/dev/study-preview',
+          file: fileURLToPath(
+            new URL('./app/dev-preview/StudyPreview.vue', import.meta.url),
+          ),
+        });
+      });
+    },
+  ],
   css: ['~/assets/css/main.css'],
   devtools: { enabled: false },
   ui: { fonts: false },
