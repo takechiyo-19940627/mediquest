@@ -30,7 +30,7 @@ describe('revision HTTP', async () => {
     },
   });
   afterAll(f.close);
-  it('creates, replays, retrieves, edits, confirms and adopts while revision publication stays forbidden', async () => {
+  it('creates, replays, retrieves, edits, confirms and adopts and refuses publication with stale expectations', async () => {
     const body = input();
     const [first, second] = await Promise.all([
       fetch(url, json(body)),
@@ -95,7 +95,7 @@ describe('revision HTTP', async () => {
         )
       ).status,
     ).toBe(200);
-    const ready = await (await fetch(base)).json();
+    const ready = d; // Before COW/adoption: stale publication expectations.
     expect(
       (
         await fetch(

@@ -78,8 +78,7 @@ const adopt = (id: number, versionId: number) =>
       'PUT',
     ),
   );
-async function refusedPublication(id: number) {
-  const d = detail(id);
+async function refusedPublication(id: number, d = detail(id)) {
   expect(
     (
       await fetch(
@@ -311,7 +310,7 @@ describe('revision COW versus logical stop and version invalidation HTTP', async
       if (kind === 'stopped')
         expect(await (await fetch(itemUrl)).json()).toEqual(answeredBefore);
       expect(answers()).toEqual(savedAnswers);
-      await refusedPublication(draftId);
+      await refusedPublication(draftId, before);
     });
   }
 });

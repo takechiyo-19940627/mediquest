@@ -124,7 +124,7 @@ describe('publication HTTP', async () => {
     f.c.client.exec('drop trigger fail_items');
     expect(JSON.stringify(getServerLogs())).not.toContain('PRIVATE_SQL');
   });
-  it('rejects a fully reviewed and selected revision with HTTP409 before any publication side effect', async () => {
+  it('rejects a revision whose source has no publication history without side effects', async () => {
     const next = await f.generate();
     for (const v of getSet(f.c, next.setId).candidates)
       confirmVersion(f.c, next.setId, v.id, {
@@ -141,7 +141,7 @@ describe('publication HTTP', async () => {
         'update question_sets set supersedes_set_id=?,supersedes_revision=0 where id=?',
       )
       .run(f.run.setId, next.setId);
-    const d = getSet(f.c, next.setId);
+    let d = getSet(f.c, next.setId);
     const before = f.c.client
       .prepare('select * from question_sets order by id')
       .all();
@@ -168,6 +168,8 @@ describe('publication HTTP', async () => {
         'update question_sets set supersedes_set_id=null,supersedes_revision=null where id=?',
       )
       .run(next.setId);
+    expect((await publishNext()).status).toBe(409);
+    d = await (await fetch(`/api/admin/sets/${next.setId}`)).json();
     expect((await publishNext()).status).toBe(201);
     expect((await publishNext()).status).toBe(200);
     expect(
