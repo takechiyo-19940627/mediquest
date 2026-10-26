@@ -312,7 +312,7 @@ it('edits an unadopted candidate, treats identical content at the current revisi
   ).toBe(1);
   expect(detail().revision).toBe(2);
 });
-it('rejects published, archived, foreign, publication-referenced, history-referenced, invalidated, stopped, failed and inconsistent candidates without writing', async () => {
+it('rejects forbidden states and separates publication/history-referenced and invalidated draft edits', async () => {
   const f = await catalogFixture();
   cleanups.push(f.close);
   const { c } = f;
@@ -358,8 +358,30 @@ it('rejects published, archived, foreign, publication-referenced, history-refere
       ),
     ).toThrow('conflict');
   expect(snapshot(c)).toEqual(before);
+  const assertCopy = () => {
+    const original = c.client
+      .prepare('select * from question_versions where id=?')
+      .get(dv.id);
+    c.client.exec('savepoint test_copy');
+    try {
+      const result = updateVersionContent(
+        c,
+        f.draftId,
+        dv.id,
+        edit(0, dv, { body: '修正' }),
+      );
+      expect(result.id).not.toBe(dv.id);
+      expect(
+        c.client
+          .prepare('select * from question_versions where id=?')
+          .get(dv.id),
+      ).toEqual(original);
+    } finally {
+      c.client.exec('rollback to test_copy; release test_copy');
+    }
+  };
   // A draft candidate referenced by another set with a publication record
-  // (published or archived) or by any study item cannot change.
+  // (published or archived) or by any study item must separate from the old row.
   const session = startSession(c, { setId: f.run.setId }, randomUUID()).session;
   const withSession = snapshot(c);
   const insertItem = c.client.prepare(
@@ -384,9 +406,7 @@ it('rejects published, archived, foreign, publication-referenced, history-refere
       )
       .run(setId, dv.id);
     insertItem.run(setId, dv.id, 5);
-    expect(() =>
-      updateVersionContent(c, f.draftId, dv.id, edit(0, dv, { body: '修正' })),
-    ).toThrow('conflict');
+    assertCopy();
     restore();
     c.client
       .prepare(
@@ -400,9 +420,7 @@ it('rejects published, archived, foreign, publication-referenced, history-refere
       'insert into study_items(session_id,question_version_id,position) values(?,?,?)',
     )
     .run(session.id, dv.id, 9);
-  expect(() =>
-    updateVersionContent(c, f.draftId, dv.id, edit(0, dv, { body: '修正' })),
-  ).toThrow('conflict');
+  assertCopy();
   c.client.exec(`delete from study_items where position=9`);
   expect(snapshot(c)).toEqual(withSession);
   // State conflicts of the candidate itself.
@@ -433,9 +451,17 @@ it('rejects published, archived, foreign, publication-referenced, history-refere
     ],
   ]) {
     c.client.exec(change!);
-    expect(() =>
-      updateVersionContent(c, f.draftId, dv.id, edit(0, dv, { body: '修正' })),
-    ).toThrow('conflict');
+    if (change!.includes('invalidated_at=1')) assertCopy();
+    else {
+      expect(() =>
+        updateVersionContent(
+          c,
+          f.draftId,
+          dv.id,
+          edit(0, dv, { body: '修正' }),
+        ),
+      ).toThrow('conflict');
+    }
     c.client.exec(restore!);
     expect(snapshot(c)).toEqual(withSession);
   }

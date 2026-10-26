@@ -109,7 +109,10 @@ export function fingerprint(version: {
     .digest('hex');
 }
 export class ReviewError extends Error {
-  constructor(public code: 'missing' | 'conflict') {
+  constructor(
+    public code: 'missing' | 'conflict',
+    public successorId?: number,
+  ) {
     super(code);
   }
 }

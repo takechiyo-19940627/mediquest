@@ -15,6 +15,9 @@ export function reviewEndpoint(
       return {
         error: {
           code: error.code,
+          ...(error.successorId === undefined
+            ? {}
+            : { successorId: error.successorId }),
           message:
             error.code === 'missing'
               ? '対象のセットまたは候補が見つかりません。'

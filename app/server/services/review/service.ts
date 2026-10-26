@@ -206,18 +206,7 @@ export function confirmVersion(
     { behavior: 'immediate' },
   );
 }
-// Issue #48: the administrator replaces the content of one candidate of a
-// never-published draft set in the same question_versions row. Published and
-// archived sets, versions referenced by any set with a publication record or by
-// any study item, invalidated versions, stopped questions and unsuccessful runs
-// are conflicts, so saved history never changes. The request must carry the
-// current set revision and content fingerprint; a stale pair is a conflict even
-// when the body is identical (no ABA replay). Identical content at the current
-// revision is a no-op that keeps the confirmation and revision. A change saves
-// the content with a server-computed quote check, clears the confirmation and
-// bumps the set revision in one IMMEDIATE transaction; set_items keep their
-// ids and positions, and the unconfirmed version blocks publication until it is
-// confirmed again.
+// Shared and historical versions are immutable: edits create a derived candidate.
 export function updateVersionContent(
   connection: Connection,
   setId: number,
@@ -237,43 +226,30 @@ export function updateVersionContent(
       const item = candidates(tx, setId).find(
         (item) => item.version.id === versionId,
       );
-      if (!item) throw new ReviewError('missing');
+      if (!item) {
+        const old = tx
+          .select()
+          .from(questionVersions)
+          .where(eq(questionVersions.id, versionId))
+          .get();
+        const replacement =
+          old &&
+          tx
+            .select()
+            .from(setCandidates)
+            .where(
+              and(
+                eq(setCandidates.setId, setId),
+                eq(setCandidates.questionId, old.questionId),
+              ),
+            )
+            .get();
+        throw new ReviewError(replacement ? 'conflict' : 'missing');
+      }
       const { version, question, run, source } = item;
       if (
         set.status !== 'draft' ||
         set.publishedAt !== null ||
-        tx
-          .select({ id: setCandidates.id })
-          .from(setCandidates)
-          .where(
-            and(
-              eq(setCandidates.questionVersionId, versionId),
-              ne(setCandidates.setId, setId),
-            ),
-          )
-          .get() !== undefined ||
-        tx
-          .select({ id: questionVersions.id })
-          .from(questionVersions)
-          .where(eq(questionVersions.derivedFromVersionId, versionId))
-          .get() !== undefined ||
-        tx
-          .select({ id: setItems.id })
-          .from(setItems)
-          .innerJoin(questionSets, eq(setItems.setId, questionSets.id))
-          .where(
-            and(
-              eq(setItems.questionVersionId, versionId),
-              isNotNull(questionSets.publishedAt),
-            ),
-          )
-          .get() !== undefined ||
-        tx
-          .select({ id: studyItems.id })
-          .from(studyItems)
-          .where(eq(studyItems.questionVersionId, versionId))
-          .get() !== undefined ||
-        version.invalidatedAt !== null ||
         (version.generationRunId !== null && run?.status !== 'succeeded') ||
         question.status !== 'active' ||
         question.sourceId !== set.sourceId ||
@@ -325,29 +301,117 @@ export function updateVersionContent(
         );
       const quoteVerified = source.body.includes(next.quote);
       const revision = nextRevision(set.revision);
-      tx.update(questionVersions)
-        .set({
-          body: next.body,
-          choicesJson: next.choicesJson,
-          answerIdsJson: next.answerIdsJson,
-          explanation: next.explanation,
-          quote: next.quote,
-          quoteVerified,
-          reviewedBy: null,
-          reviewedAt: null,
-        })
-        .where(eq(questionVersions.id, versionId))
-        .run();
+      const copyOnWrite =
+        tx
+          .select({ id: setCandidates.id })
+          .from(setCandidates)
+          .where(
+            and(
+              eq(setCandidates.questionVersionId, versionId),
+              ne(setCandidates.setId, setId),
+            ),
+          )
+          .get() !== undefined ||
+        tx
+          .select({ id: questionVersions.id })
+          .from(questionVersions)
+          .where(eq(questionVersions.derivedFromVersionId, versionId))
+          .get() !== undefined ||
+        tx
+          .select({ id: setItems.id })
+          .from(setItems)
+          .innerJoin(questionSets, eq(setItems.setId, questionSets.id))
+          .where(
+            and(
+              eq(setItems.questionVersionId, versionId),
+              isNotNull(questionSets.publishedAt),
+            ),
+          )
+          .get() !== undefined ||
+        tx
+          .select({ id: studyItems.id })
+          .from(studyItems)
+          .where(eq(studyItems.questionVersionId, versionId))
+          .get() !== undefined ||
+        version.invalidatedAt !== null;
+      let saved: typeof version = {
+        ...next,
+        quoteVerified,
+        reviewedBy: null,
+        reviewedAt: null,
+      };
+      if (copyOnWrite) {
+        const maximum = tx
+          .select({ value: sql<number>`max(${questionVersions.versionNo})` })
+          .from(questionVersions)
+          .where(eq(questionVersions.questionId, version.questionId))
+          .get()!;
+        saved = tx
+          .insert(questionVersions)
+          .values({
+            questionId: version.questionId,
+            versionNo: nextRevision(maximum.value),
+            body: next.body,
+            choicesJson: next.choicesJson,
+            answerIdsJson: next.answerIdsJson,
+            explanation: next.explanation,
+            quote: next.quote,
+            quoteVerified,
+            generationRunId: null,
+            derivedFromVersionId: versionId,
+            createdAt: Date.now(),
+          })
+          .returning()
+          .get();
+        const adopted = tx
+          .select()
+          .from(setItems)
+          .where(
+            and(
+              eq(setItems.setId, setId),
+              eq(setItems.questionVersionId, versionId),
+            ),
+          )
+          .get();
+        if (adopted)
+          tx.delete(setItems).where(eq(setItems.id, adopted.id)).run();
+        tx.update(setCandidates)
+          .set({ questionVersionId: saved.id })
+          .where(
+            and(
+              eq(setCandidates.setId, setId),
+              eq(setCandidates.questionVersionId, versionId),
+            ),
+          )
+          .run();
+        if (adopted)
+          tx.insert(setItems)
+            .values({
+              setId,
+              questionVersionId: saved.id,
+              position: adopted.position,
+            })
+            .run();
+      } else {
+        tx.update(questionVersions)
+          .set({
+            body: next.body,
+            choicesJson: next.choicesJson,
+            answerIdsJson: next.answerIdsJson,
+            explanation: next.explanation,
+            quote: next.quote,
+            quoteVerified,
+            reviewedBy: null,
+            reviewedAt: null,
+          })
+          .where(eq(questionVersions.id, versionId))
+          .run();
+      }
       tx.update(questionSets)
         .set({ revision })
         .where(eq(questionSets.id, setId))
         .run();
-      return result(
-        { ...next, reviewedBy: null, reviewedAt: null },
-        quoteVerified,
-        revision,
-        true,
-      );
+      return result(saved, quoteVerified, revision, true);
     },
     { behavior: 'immediate' },
   );
