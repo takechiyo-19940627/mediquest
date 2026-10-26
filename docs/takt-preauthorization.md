@@ -104,3 +104,15 @@ node scripts/codex-runtime.mjs prepare /path/to/installed/codex .takt/runtime/co
 Issue52 attempt3ではPhase3 judgeがhostゲート前に「全7未確認」を理由にABORTを選び、その後host全7が成功しても保存済み判定が適用された。実装者向けinstructionsだけでなく、judgeが読むimplement/fixのrulesを「実装/修正完了、host検証へ引継ぎ可能」と定義する。sandbox制約や今回hostゲート待ちは引継ぎ条件に含め、品質成功とは区別する。実装自体の進行不能、仕様・認証判断、既定失敗上限は停止理由として維持する。
 
 全7hostゲートは省略せず、失敗ならreviewへ進まない。成功しても真のABORTを強制的に上書きしない。実runloop回帰では、事前ABORT+host成功の元挙動、host-ready+host失敗の同工程保持、成功後のreview遷移を検査する。静的条件テストと偽response回帰は実モデルの語義判断の安定性を保証しない。Issue52の到達済み再試行上限やqueueはこの修正で変更しない。
+
+### Issue59: 実worktreeのhost準備と明示停止（local patch v2）
+
+Codex工程はネットワーク禁止のまま維持する。新規worktreeには依存がないため、TAKT 0.49.0の `executeTaskWorkflow` でworkflowを解決した後、モデルを起動する `workflowExecutor` の前にhost準備を実施する。調査したtask実行経路にはこの用途の正式設定hookがないため、既存同様に版・元ファイルhashを固定したローカルコピーだけをpatchする。管理側・workerが同じGit common directoryに属するrepo直下であること、固定launcherが一致すること、workflow名がmediquest-appであることを確認し、worker cwdで `ci` → `browser:install` を実行する。
+
+start_step/directResumeでも毎回準備し、過去の導入証拠を流用しない。開始時と終了時のmanifest/lock hashも照合する。準備失敗は `host_preparation_failed` でモデル起動前に終了し、`.takt/preparation/` に準備記録を残す。準備は承認済みホスト上の依存lifecycle実行であり、OS隔離や全7品質チェックの成功を意味しない。Node24・worktree専用cacheは既存app launcherで固定する。管理repo/worker双方に同じreview済みlauncherを配置してから利用する。
+
+editable工程の**直接command gate**が失敗した場合も証拠を保存し、元のdone応答の遷移が明示ABORTなら反復せず停止する。review等への通常遷移はgate失敗時には進めず、既存の修正retryを維持する。成功時ABORT、readonly失敗即abort、max_steps12、queue試行上限と全7gateを変えない。continuous/single-iteration双方が対象。parallel子工程の失敗応答は合成され元の親rule選択を持たないため、nested quality failureは既存retry/readonly abortを保持する。現mediquest-appはlinear構成である。任意parallel workflowへの停止保証を主張しない。
+
+prepare/verifyコマンドは既存と同じだが、新しい空の出力先へv2を作る。旧v1実体やglobal本体を上書きしない。queueとlauncherは同じv2実体を検証し、元task-workflow/runloop hashと変更後コード、host準備helperの一致を確認する。独立レビュー前はlive queueへ接続しない。実npm/Chromium通信と実TAKT再開は別途監督者が判断する。
+
+非通信回帰: `node --test scripts/host-prepare.test.mjs scripts/takt-local-patch.test.mjs`、`node scripts/check-takt-preparation.mjs <v2 runtime>`、`node scripts/check-takt-readonly-abort.mjs <v2 runtime>`。実TAKT moduleにfixture executor/固定失敗を渡し、実worker準備順・再開・準備失敗時モデル非起動と明示ABORTを検証する。モデル呼出しや依存の実導入は行わない。

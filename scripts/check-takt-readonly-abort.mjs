@@ -8,7 +8,7 @@ function scenario(edit, failure, embedded) {
   let runs = 0, gates = 0, snapshots = 0;
   const step = { name: 'fixture', edit, persona: 'fixture', rules: [], qualityGates: [] };
   const state = { status: 'running', iteration: 0, currentStep: step.name, stepIterations: new Map(), stepOutputs: new Map() };
-  const response = { status: 'done', content: 'fixture', persona: 'fixture', timestamp: new Date() };
+  const response = { status: 'done', matchedRuleIndex: 0, content: 'fixture', persona: 'fixture', timestamp: new Date() };
   const fail = { ...response, content: 'fixture failure evidence' };
   const deps = {
     state, options: {}, getWorkflowName: () => 'fixture', getCurrentWorkflowStack: () => [], getCwd: () => process.cwd(), getMaxSteps: () => 4, getReportDir: () => '', abortRequested: () => false, getStep: () => step,
@@ -72,3 +72,18 @@ for (const nextStep of ['review', 'ABORT']) {
   assert.equal(counts().gates, 2);
 }
 console.log('Preselected ABORT remains ABORT after host success; host-ready proceeds to review only after gate success. Judge semantics remain model-dependent.');
+
+for (const single of [false, true]) {
+  const { deps, counts } = scenario(true, true, false);
+  let decisions = 0;
+  const { WorkflowEngineStepCoordinator } = await import(pathToFileURL(join(pkg, 'dist/core/workflow/engine/WorkflowEngineStepCoordinator.js')));
+  deps.getStep().rules = [{ condition: 'cannot implement', next: 'ABORT' }];
+  deps.resolveDoneTransition = (step, response) => { decisions++; return WorkflowEngineStepCoordinator.prototype.resolveTransitionFromDone.call({}, step, response); };
+  const result = await (single ? runSingleWorkflowIteration(deps) : runWorkflowToCompletion(deps));
+  assert.equal(counts().runs, 1);
+  assert.equal(counts().snapshots, 1);
+  assert.equal(decisions, 1);
+  assert.equal(deps.state.status, 'aborted');
+  assert.match(result.abort.reason, /explicit_abort_quality_failure/);
+}
+console.log('Direct gate failure preserves explicit ABORT once, including failure evidence, in both runloop modes.');
