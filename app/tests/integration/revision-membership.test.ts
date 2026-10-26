@@ -128,14 +128,30 @@ it('rejects nonmembers, material mismatches, invalid ancestry and failed generat
     const before = c
       .prepare('select * from question_versions order by id')
       .all();
-    expect(() => edit(f.run.setId, f.sharedId)).toThrow('conflict');
-    expect(() => edit(f.targetId, f.sharedId)).toThrow('conflict');
-    expect(() => edit(f.run.setId, f.parentId)).toThrow('conflict');
+    const assertCopy = (setId: number, id: number) => {
+      c.exec('savepoint test_copy');
+      try {
+        const result = edit(setId, id);
+        expect(result.id).not.toBe(id);
+        expect(
+          c
+            .prepare(
+              'select * from question_versions where id <= ? order by id',
+            )
+            .all(f.derivedId),
+        ).toEqual(before);
+      } finally {
+        c.exec('rollback to test_copy; release test_copy');
+      }
+    };
+    assertCopy(f.run.setId, f.sharedId);
+    assertCopy(f.targetId, f.sharedId);
+    assertCopy(f.run.setId, f.parentId);
     c.prepare(
       'delete from set_candidates where set_id=? and question_version_id=?',
     ).run(f.targetId, f.sharedId);
     // Removing sharing never makes a parent mutable.
-    expect(() => edit(f.run.setId, f.parentId)).toThrow('conflict');
+    assertCopy(f.run.setId, f.parentId);
     expect(() =>
       replaceItems(f.c, f.targetId, {
         expectedRevision: 0,

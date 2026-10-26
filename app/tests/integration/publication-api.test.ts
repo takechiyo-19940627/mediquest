@@ -263,19 +263,40 @@ describe('publication HTTP', async () => {
       .prepare('select * from question_versions order by id')
       .all();
     const v = detail.candidates.find((v: { id: number }) => v.id === sharedId);
+    const edited = await call(`versions/${sharedId}/content`, {
+      expectedRevision: 1,
+      expectedFingerprint: v.fingerprint,
+      body: 'changed',
+      choices: v.choices,
+      answerIds: v.answerIds,
+      explanation: v.explanation,
+      quote: v.quote,
+    });
+    expect(edited.status).toBe(200);
+    const saved = await edited.json();
+    expect(saved.id).not.toBe(sharedId);
+    expect(saved).toMatchObject({
+      changed: true,
+      revision: 2,
+      reviewedAt: null,
+    });
+    const after = f.c.client
+      .prepare('select * from question_versions order by id')
+      .all();
+    expect(after).toHaveLength(before.length + 1);
     expect(
-      (
-        await call(`versions/${sharedId}/content`, {
-          expectedRevision: 1,
-          expectedFingerprint: v.fingerprint,
-          body: 'changed',
-          choices: v.choices,
-          answerIds: v.answerIds,
-          explanation: v.explanation,
-          quote: v.quote,
-        })
-      ).status,
-    ).toBe(409);
+      after.filter((row) => (row as { id: number }).id !== saved.id),
+    ).toEqual(before);
+    const updated = await (await fetch(path)).json();
+    expect(
+      updated.candidates.find((row: { id: number }) => row.id === saved.id),
+    ).toMatchObject({
+      generationRunId: null,
+      derivedFromVersionId: sharedId,
+    });
+    expect(
+      updated.items.map((row: { versionId: number }) => row.versionId),
+    ).toEqual([saved.id, derived.id]);
     // A source mismatch is a service boundary, not a cross-table CHECK.
     f.c.client.exec(
       "insert into sources(title,body,created_by,created_at) values('foreign','foreign',1,1)",
@@ -285,7 +306,7 @@ describe('publication HTTP', async () => {
       .run(next.setId);
     expect((await fetch(path)).status).toBe(409);
     expect(
-      (await call('items', { expectedRevision: 1, versionIds: [sharedId] }))
+      (await call('items', { expectedRevision: 2, versionIds: [saved.id] }))
         .status,
     ).toBe(409);
     f.c.client
@@ -293,14 +314,14 @@ describe('publication HTTP', async () => {
       .run(next.setId);
     expect(
       f.c.client.prepare('select * from question_versions order by id').all(),
-    ).toEqual(before);
+    ).toEqual(after);
     // Remove fixture sharing so subsequent tests exercise the original set independently.
     f.c.client.prepare('delete from set_items where set_id=?').run(next.setId);
     f.c.client
       .prepare(
         'delete from set_candidates where set_id=? and question_version_id in (?,?)',
       )
-      .run(next.setId, sharedId, derived.id);
+      .run(next.setId, saved.id, derived.id);
   });
   it('serializes competing selections, selection against publish, and exact concurrent publication replay', async () => {
     const responses = await Promise.all([

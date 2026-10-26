@@ -1,3 +1,8 @@
+import { createRevision } from '../../server/services/revisions/service';
+import {
+  getSet,
+  updateVersionContent,
+} from '../../server/services/review/service';
 import Database from 'better-sqlite3';
 import { spawn, spawnSync } from 'node:child_process';
 import { randomUUID } from 'node:crypto';
@@ -124,6 +129,23 @@ it('round trips all rows, reports, normal/review answers and skips through actua
         'insert into set_revision_requests(requested_by,request_key,source_set_id,source_revision,request_fingerprint,created_set_id,created_at) values(1,?,?,?,?,?,1)',
       )
       .run('revision', f.run.setId, 3, 'fingerprint', f.draftId);
+    const source = getSet(f.c, f.run.setId);
+    const revision = createRevision(f.c, source.id, {
+      requestKey: randomUUID(),
+      expectedRevision: source.revision,
+      title: 'API revision',
+      description: '',
+    });
+    const version = getSet(f.c, revision.id).candidates[0]!;
+    updateVersionContent(f.c, revision.id, version.id, {
+      expectedRevision: 0,
+      expectedFingerprint: version.fingerprint,
+      body: 'API copy',
+      choices: version.choices,
+      answerIds: version.answerIds,
+      explanation: version.explanation,
+      quote: version.quote,
+    });
     const before = dump(f.c.client);
     const originalBytes = readFileSync(f.database);
     expect(statSync(f.database + '-wal').size).toBeGreaterThan(0);
