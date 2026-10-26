@@ -3,6 +3,8 @@ import { spawn, spawnSync } from 'node:child_process';
 import { randomUUID } from 'node:crypto';
 import {
   existsSync,
+  mkdtempSync,
+  rmSync,
   readFileSync,
   readdirSync,
   realpathSync,
@@ -11,6 +13,9 @@ import {
   writeFileSync,
 } from 'node:fs';
 import { join } from 'node:path';
+import { tmpdir } from 'node:os';
+import { legacyMigrations } from '../fixtures/legacy-migrations';
+import { migrateDatabase } from '../../server/db/migrate';
 import { fileURLToPath } from 'node:url';
 import { expect, it } from 'vitest';
 import { catalogFixture } from '../fixtures/catalog';
@@ -92,6 +97,33 @@ it('round trips all rows, reports, normal/review answers and skips through actua
       decision: 'confirmed',
       note: 'SECRET_NOTE',
     });
+    // Persist all stage-1 data via fixture SQL, with no new operational API.
+    f.c.client
+      .prepare(
+        'insert into set_candidates(set_id,question_id,question_version_id) select ?,question_id,id from question_versions where id=?',
+      )
+      .run(f.draftId, f.ids[0]);
+    const derived = f.c.client
+      .prepare(
+        `insert into question_versions(question_id,version_no,body,choices_json,answer_ids_json,explanation,quote,quote_verified,generation_run_id,derived_from_version_id,created_at)
+      select question_id,2,body,choices_json,answer_ids_json,explanation,quote,quote_verified,null,id,created_at from question_versions where id=? returning id`,
+      )
+      .get(f.ids[1]) as { id: number };
+    f.c.client
+      .prepare(
+        'insert into set_candidates(set_id,question_id,question_version_id) select ?,question_id,id from question_versions where id=?',
+      )
+      .run(f.draftId, derived.id);
+    f.c.client
+      .prepare(
+        'update question_sets set supersedes_set_id=?,supersedes_revision=3 where id=?',
+      )
+      .run(f.run.setId, f.draftId);
+    f.c.client
+      .prepare(
+        'insert into set_revision_requests(requested_by,request_key,source_set_id,source_revision,request_fingerprint,created_set_id,created_at) values(1,?,?,?,?,?,1)',
+      )
+      .run('revision', f.run.setId, 3, 'fingerprint', f.draftId);
     const before = dump(f.c.client);
     const originalBytes = readFileSync(f.database);
     expect(statSync(f.database + '-wal').size).toBeGreaterThan(0);
@@ -385,5 +417,28 @@ it('rejects missing and excess CLI arguments without printing paths or stacks', 
       expect(result.stdout).toBe('');
       expect(result.stderr).toBe(`Database ${script} failed\n`);
     }
+  }
+});
+
+it('rejects an actual 0008 backup without implicit migration or changing source/output', () => {
+  const directory = mkdtempSync(join(tmpdir(), 'revision-old-backup-'));
+  const path = join(directory, 'old.sqlite');
+  const c = openDatabase({ MEDIQUEST_DB_PATH: path });
+  try {
+    migrateDatabase(c, legacyMigrations(directory));
+    const before = dump(c.client);
+    const bytes = readFileSync(path);
+    const out = join(directory, 'rejected.sqlite');
+    failed(cli(path, out));
+    failed(cli(path, out, true), true);
+    expect(existsSync(out)).toBe(false);
+    expect(readFileSync(path)).toEqual(bytes);
+    expect(dump(c.client)).toEqual(before);
+    writeFileSync(out, 'existing');
+    failed(cli(path, out));
+    expect(readFileSync(out, 'utf8')).toBe('existing');
+  } finally {
+    c.close();
+    rmSync(directory, { recursive: true, force: true });
   }
 });

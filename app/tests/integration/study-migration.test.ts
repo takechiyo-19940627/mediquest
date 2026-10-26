@@ -73,7 +73,19 @@ it('adds study tables without changing existing publication data on repeated mig
     migrateDatabase(c, migrations);
     expect(
       tables.map((table) => c.client.prepare(`select * from ${table}`).all()),
-    ).toEqual(before);
+    ).toEqual(
+      before.map((rows, index) =>
+        rows.map((row) => ({
+          ...(row as Record<string, unknown>),
+          ...(tables[index] === 'question_versions'
+            ? { derived_from_version_id: null }
+            : {}),
+          ...(tables[index] === 'question_sets'
+            ? { supersedes_set_id: null, supersedes_revision: null }
+            : {}),
+        })),
+      ),
+    );
     expect(c.client.prepare('select * from study_sessions').all()).toEqual([]);
     expect(c.client.prepare('select * from study_items').all()).toEqual([]);
   } finally {

@@ -247,11 +247,19 @@ describe('stop HTTP', async () => {
     // q0 gets a second, unpublished version: the draft set's first candidate is
     // re-parented to q0 as version 2, confirmed and adopted in the draft.
     const v2 = getSet(f.c, f.draftId).candidates[0]!.id;
-    f.c.client
-      .prepare(
-        'update question_versions set question_id=?,version_no=2 where id=?',
-      )
-      .run(q0, v2);
+    f.c.client.transaction(() => {
+      f.c.client.pragma('defer_foreign_keys=ON');
+      f.c.client
+        .prepare(
+          'update question_versions set question_id=?,version_no=2 where id=?',
+        )
+        .run(q0, v2);
+      f.c.client
+        .prepare(
+          'update set_candidates set question_id=? where question_version_id=?',
+        )
+        .run(q0, v2);
+    })();
     const candidate = getSet(f.c, f.draftId).candidates.find(
       (v) => v.id === v2,
     )!;

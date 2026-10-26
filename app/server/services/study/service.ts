@@ -133,7 +133,7 @@ function obtainable(
     version.invalidatedAt !== null ||
     version.reviewedBy === null ||
     version.reviewedAt === null ||
-    run.status !== 'succeeded'
+    (version.generationRunId !== null && run?.status !== 'succeeded')
   )
     return false;
   try {

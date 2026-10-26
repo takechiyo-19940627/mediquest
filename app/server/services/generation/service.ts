@@ -3,6 +3,7 @@ import { openDatabase } from '../../db/connection';
 import type { Connection } from '../../db/connection';
 import {
   generationRuns,
+  setCandidates,
   questionSets,
   questions,
   questionVersions,
@@ -112,6 +113,13 @@ export function completeGeneration(
             errorCode = 'invalid_output';
           }
           if (candidates) {
+            const set = tx
+              .select()
+              .from(questionSets)
+              .where(eq(questionSets.id, run.setId))
+              .get();
+            if (!set || set.sourceId !== source.id)
+              throw new GenerationError('storage');
             for (const candidate of candidates) {
               const question = tx
                 .insert(questions)
@@ -122,7 +130,8 @@ export function completeGeneration(
                 })
                 .returning({ id: questions.id })
                 .get();
-              tx.insert(questionVersions)
+              const version = tx
+                .insert(questionVersions)
                 .values({
                   questionId: question.id,
                   versionNo: 1,
@@ -136,6 +145,14 @@ export function completeGeneration(
                   createdAt: Date.now(),
                   reviewedAt: null,
                   reviewedBy: null,
+                })
+                .returning({ id: questionVersions.id })
+                .get();
+              tx.insert(setCandidates)
+                .values({
+                  setId: run.setId,
+                  questionId: question.id,
+                  questionVersionId: version.id,
                 })
                 .run();
             }

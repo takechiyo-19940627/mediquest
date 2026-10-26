@@ -64,6 +64,13 @@
       "when": 1792902960000,
       "tag": "0008_study_session_review",
       "breakpoints": true
+    },
+    {
+      "idx": 9,
+      "version": "6",
+      "when": 1792989463250,
+      "tag": "0009_set_candidates_revision_base",
+      "breakpoints": true
     }
   ]
 }

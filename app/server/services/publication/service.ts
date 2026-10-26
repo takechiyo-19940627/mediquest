@@ -66,6 +66,8 @@ export function publishSet(connection: Connection, id: number, value: unknown) {
         .where(eq(questionSets.id, id))
         .get();
       if (!set) throw new ReviewError('missing');
+      // Stage 3 must replace this guard with atomic revision publication.
+      if (set.supersedesSetId !== null) throw new ReviewError('conflict');
       const result = (replayed: boolean) => ({
         id: set.id,
         status: set.status,

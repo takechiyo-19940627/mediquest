@@ -378,11 +378,21 @@ it('rejects published, archived, foreign, publication-referenced, history-refere
       () => c.client.exec(`delete from set_items where set_id=${f.archivedId}`),
     ],
   ] as const) {
+    c.client
+      .prepare(
+        'insert into set_candidates(set_id,question_id,question_version_id) select ?,question_id,id from question_versions where id=?',
+      )
+      .run(setId, dv.id);
     insertItem.run(setId, dv.id, 5);
     expect(() =>
       updateVersionContent(c, f.draftId, dv.id, edit(0, dv, { body: '修正' })),
     ).toThrow('conflict');
     restore();
+    c.client
+      .prepare(
+        'delete from set_candidates where set_id=? and question_version_id=?',
+      )
+      .run(setId, dv.id);
     expect(snapshot(c)).toEqual(withSession);
   }
   c.client

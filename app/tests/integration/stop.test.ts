@@ -104,11 +104,19 @@ function twoVersions(f: Fixture) {
   const q0 = f.detail().candidates[0]!.questionId;
   const q1 = f.detail().candidates[1]!.questionId;
   const v2 = getSet(f.c, f.draftId).candidates[0]!.id;
-  f.c.client
-    .prepare(
-      'update question_versions set question_id=?,version_no=2 where id=?',
-    )
-    .run(q0, v2);
+  f.c.client.transaction(() => {
+    f.c.client.pragma('defer_foreign_keys=ON');
+    f.c.client
+      .prepare(
+        'update question_versions set question_id=?,version_no=2 where id=?',
+      )
+      .run(q0, v2);
+    f.c.client
+      .prepare(
+        'update set_candidates set question_id=? where question_version_id=?',
+      )
+      .run(q0, v2);
+  })();
   const candidate = getSet(f.c, f.draftId).candidates.find((v) => v.id === v2)!;
   confirmVersion(f.c, f.draftId, v2, {
     fingerprint: candidate.fingerprint,
