@@ -3,11 +3,12 @@ import assert from 'node:assert/strict';
 import { mkdtempSync, mkdirSync, writeFileSync, readFileSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { prepareRuntime, verifyPatchedRuntime, patchedSource, target } from './takt-local-patch.mjs';
+import { prepareRuntime, verifyPatchedRuntime, patchedSource, patchedTaskSource, target } from './takt-local-patch.mjs';
 test('patch rejects unknown source hash, version and existing destination without mutation', t => {
   const root = mkdtempSync(join(tmpdir(), 'takt-patch-reject-'));
   t.after(() => rmSync(root, { recursive: true, force: true }));
   assert.throws(() => patchedSource('unexpected source'), /hash/);
+  assert.throws(() => patchedTaskSource('unexpected source'), /hash/);
   const source = join(root, 'source'), dest = join(root, 'dest');
   mkdirSync(source); mkdirSync(dest);
   writeFileSync(join(source, 'package.json'), JSON.stringify({ name: 'takt', version: '9.0' }));
