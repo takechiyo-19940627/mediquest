@@ -34,7 +34,7 @@ function snapshot(f: Awaited<ReturnType<typeof publicationFixture>>) {
     f.c.client.prepare(`select * from ${table} order by id`).all(),
   );
 }
-it('copies only adopted versions in order, replays before source-state checks, separates edits and keeps publication guarded', async () => {
+it('copies only adopted versions in order, replays before source-state checks, separates edits and publishes the revision atomically', async () => {
   const f = await publishedSourceFixture();
   try {
     const source = f.detail();
@@ -126,15 +126,17 @@ it('copies only adopted versions in order, replays before source-state checks, s
       versionIds: [result.id],
     });
     const ready = getSet(f.c, draft.id);
-    const before = snapshot(f);
-    expect(() =>
+    expect(
       publishSet(f.c, draft.id, {
         expectedRevision: ready.revision,
         publishFingerprint: ready.publishFingerprint,
         confirmed: true,
       }),
-    ).toThrow('conflict');
-    expect(snapshot(f)).toEqual(before);
+    ).toMatchObject({ status: 'published', revision: ready.revision + 1 });
+    expect(f.detail()).toMatchObject({
+      status: 'archived',
+      revision: source.revision + 1,
+    });
     archiveSet(f.c, source.id, {});
     expect(createRevision(f.c, source.id, input)).toMatchObject({
       id: draft.id,
@@ -143,8 +145,12 @@ it('copies only adopted versions in order, replays before source-state checks, s
     expect(() =>
       createRevision(f.c, source.id, { ...input, title: 'different' }),
     ).toThrow('conflict');
+    expect(() =>
+      createRevision(f.c, source.id, request(f.detail().revision)),
+    ).toThrow(expect.objectContaining({ successorId: draft.id }));
     expect(
-      createRevision(f.c, source.id, request(f.detail().revision)).status,
+      createRevision(f.c, draft.id, request(getSet(f.c, draft.id).revision))
+        .status,
     ).toBe('draft');
   } finally {
     f.close();

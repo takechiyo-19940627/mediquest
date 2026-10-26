@@ -1,4 +1,4 @@
-import { eq } from 'drizzle-orm';
+import { and, eq } from 'drizzle-orm';
 import type { Connection } from '../../db/connection';
 import { questionSets, setItems } from '../../db/schema';
 import { requireAdministrator } from '../local-admin';
@@ -9,6 +9,8 @@ import {
   publicationState,
   selectedItems,
   validateSelection,
+  validatePublishableSelection,
+  validateRevisionSource,
 } from './state';
 export function replaceItems(
   connection: Connection,
@@ -66,8 +68,6 @@ export function publishSet(connection: Connection, id: number, value: unknown) {
         .where(eq(questionSets.id, id))
         .get();
       if (!set) throw new ReviewError('missing');
-      // Stage 3 must replace this guard with atomic revision publication.
-      if (set.supersedesSetId !== null) throw new ReviewError('conflict');
       const result = (replayed: boolean) => ({
         id: set.id,
         status: set.status,
@@ -77,27 +77,25 @@ export function publishSet(connection: Connection, id: number, value: unknown) {
         replayed,
       });
       if (
-        set.status === 'published' &&
+        (set.status === 'published' ||
+          (set.supersedesSetId !== null && set.status === 'archived')) &&
         set.publishedAt !== null &&
         set.publishedBy !== null &&
         set.publishRequestRevision === input.expectedRevision &&
         set.publishRequestFingerprint === input.publishFingerprint
       )
         return result(true);
-      if (set.status !== 'draft' || set.publishedAt !== null)
-        throw new ReviewError('conflict');
-      const items = selectedItems(tx, id);
       if (
-        !items.length ||
-        items.length > 10 ||
-        items.some((item, index) => item.position !== index)
+        set.status !== 'draft' ||
+        set.publishedAt !== null ||
+        set.publishedBy !== null
       )
         throw new ReviewError('conflict');
-      validateSelection(
-        tx,
-        set,
-        items.map((item) => item.questionVersionId),
-      );
+      const source =
+        set.supersedesSetId !== null || set.supersedesRevision !== null
+          ? validateRevisionSource(tx, set)
+          : undefined;
+      validatePublishableSelection(tx, set);
       if (
         input.expectedRevision !== set.revision ||
         input.publishFingerprint !==
@@ -105,18 +103,51 @@ export function publishSet(connection: Connection, id: number, value: unknown) {
       )
         throw new ReviewError('conflict');
       const revision = nextRevision(set.revision);
+      const sourceRevision =
+        source?.status === 'published'
+          ? nextRevision(source.revision)
+          : undefined;
       const publishedAt = Date.now();
-      tx.update(questionSets)
-        .set({
-          status: 'published',
-          publishedBy: user,
-          publishedAt,
-          revision,
-          publishRequestRevision: input.expectedRevision,
-          publishRequestFingerprint: input.publishFingerprint,
-        })
-        .where(eq(questionSets.id, id))
-        .run();
+      try {
+        tx.update(questionSets)
+          .set({
+            status: 'published',
+            publishedBy: user,
+            publishedAt,
+            revision,
+            publishRequestRevision: input.expectedRevision,
+            publishRequestFingerprint: input.publishFingerprint,
+          })
+          .where(eq(questionSets.id, id))
+          .run();
+      } catch (error) {
+        // Only the existing successor uniqueness defence is a state conflict.
+        // Other storage failures retain the endpoint's safe 500 handling.
+        if (
+          source &&
+          error instanceof Error &&
+          'code' in error &&
+          error.code === 'SQLITE_CONSTRAINT_UNIQUE' &&
+          error.message ===
+            'UNIQUE constraint failed: question_sets.supersedes_set_id'
+        )
+          throw new ReviewError('conflict');
+        throw error;
+      }
+      if (source && sourceRevision !== undefined) {
+        const updated = tx
+          .update(questionSets)
+          .set({ status: 'archived', revision: sourceRevision })
+          .where(
+            and(
+              eq(questionSets.id, source.id),
+              eq(questionSets.status, 'published'),
+              eq(questionSets.revision, source.revision),
+            ),
+          )
+          .run();
+        if (updated.changes !== 1) throw new ReviewError('conflict');
+      }
       return {
         ...result(false),
         status: 'published' as const,

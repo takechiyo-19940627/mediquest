@@ -1,6 +1,11 @@
+import {
+  publishSet,
+  replaceItems,
+} from '../../server/services/publication/service';
 import { createRevision } from '../../server/services/revisions/service';
 import {
   getSet,
+  confirmVersion,
   updateVersionContent,
 } from '../../server/services/review/service';
 import Database from 'better-sqlite3';
@@ -137,7 +142,7 @@ it('round trips all rows, reports, normal/review answers and skips through actua
       description: '',
     });
     const version = getSet(f.c, revision.id).candidates[0]!;
-    updateVersionContent(f.c, revision.id, version.id, {
+    const edited = updateVersionContent(f.c, revision.id, version.id, {
       expectedRevision: 0,
       expectedFingerprint: version.fingerprint,
       body: 'API copy',
@@ -146,6 +151,22 @@ it('round trips all rows, reports, normal/review answers and skips through actua
       explanation: version.explanation,
       quote: version.quote,
     });
+    confirmVersion(f.c, revision.id, edited.id, {
+      fingerprint: edited.fingerprint,
+      confirmed: true,
+      acknowledgeQuoteMismatch: true,
+    });
+    replaceItems(f.c, revision.id, {
+      expectedRevision: edited.revision,
+      versionIds: [edited.id],
+    });
+    const ready = getSet(f.c, revision.id);
+    const publishRequest = {
+      expectedRevision: ready.revision,
+      publishFingerprint: ready.publishFingerprint,
+      confirmed: true,
+    };
+    publishSet(f.c, revision.id, publishRequest);
     const before = dump(f.c.client);
     const originalBytes = readFileSync(f.database);
     expect(statSync(f.database + '-wal').size).toBeGreaterThan(0);
@@ -164,6 +185,8 @@ it('round trips all rows, reports, normal/review answers and skips through actua
     expect(dump(f.c.client)).toEqual(before);
     const c = openDatabase({ MEDIQUEST_DB_PATH: restored });
     try {
+      expect(dump(c.client)).toEqual(before);
+      expect(publishSet(c, revision.id, publishRequest).replayed).toBe(true);
       expect(dump(c.client)).toEqual(before);
       expect(c.client.pragma('integrity_check')).toEqual([
         { integrity_check: 'ok' },
