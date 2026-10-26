@@ -1,8 +1,9 @@
+import { setupSharedHttpServer } from '../fixtures/http-server';
 import { randomUUID } from 'node:crypto';
 import { request } from 'node:http';
 import { fileURLToPath } from 'node:url';
 import { afterAll, describe, expect, it } from 'vitest';
-import { setup, fetch, startServer, getServerLogs } from '@nuxt/test-utils/e2e';
+import { fetch, startServer, getServerLogs } from '@nuxt/test-utils/e2e';
 import { catalogFixture, privateMarkers } from '../fixtures/catalog';
 const f = await catalogFixture();
 type Session = { id: number; items: { id: number }[] };
@@ -74,9 +75,8 @@ function rawStatus(path: string, headers: Record<string, string>) {
   });
 }
 describe('study history HTTP', async () => {
-  await setup({
+  await setupSharedHttpServer({
     rootDir: fileURLToPath(new URL('../..', import.meta.url)),
-    server: true,
     port: 3204,
     env: {
       MEDIQUEST_DB_PATH: f.database,

@@ -1,9 +1,10 @@
 import type { questionSets } from '../../db/schema';
 import { createHash } from 'node:crypto';
-import { eq } from 'drizzle-orm';
+import { and, eq } from 'drizzle-orm';
 import type { Connection } from '../../db/connection';
 import {
   setItems,
+  setCandidates,
   questionVersions,
   questions,
   generationRuns,
@@ -39,22 +40,44 @@ export function versionForSet(db: DatabaseReader, set: SetRow, id: number) {
       question: questions,
       run: generationRuns,
       source: sources,
+      candidate: setCandidates,
     })
     .from(questionVersions)
     .innerJoin(questions, eq(questionVersions.questionId, questions.id))
-    .innerJoin(
+    .leftJoin(
       generationRuns,
       eq(questionVersions.generationRunId, generationRuns.id),
     )
-    .innerJoin(sources, eq(generationRuns.sourceId, sources.id))
+    .innerJoin(sources, eq(questions.sourceId, sources.id))
+    .innerJoin(
+      setCandidates,
+      and(
+        eq(setCandidates.questionVersionId, questionVersions.id),
+        eq(setCandidates.setId, set.id),
+      ),
+    )
     .where(eq(questionVersions.id, id))
     .get();
-  if (!row || row.run.setId !== set.id) throw new ReviewError('missing');
+  if (!row) throw new ReviewError('missing');
   if (
     row.question.sourceId !== set.sourceId ||
-    row.run.sourceId !== set.sourceId
+    row.candidate.questionId !== row.version.questionId ||
+    (row.version.generationRunId !== null &&
+      (!row.run || row.run.sourceId !== set.sourceId))
   )
     throw new ReviewError('conflict');
+  if (row.version.generationRunId === null) {
+    const parent =
+      row.version.derivedFromVersionId === null
+        ? undefined
+        : db
+            .select({ questionId: questionVersions.questionId })
+            .from(questionVersions)
+            .where(eq(questionVersions.id, row.version.derivedFromVersionId))
+            .get();
+    if (!parent || parent.questionId !== row.version.questionId)
+      throw new ReviewError('conflict');
+  }
   return row;
 }
 export function validateSelection(
@@ -66,7 +89,7 @@ export function validateSelection(
   for (const id of ids) {
     const { version, question, run, source } = versionForSet(db, set, id);
     if (
-      run.status !== 'succeeded' ||
+      (version.generationRunId !== null && run?.status !== 'succeeded') ||
       question.status !== 'active' ||
       version.invalidatedAt !== null ||
       version.reviewedBy === null ||
@@ -113,7 +136,7 @@ export function publicationState(db: DatabaseReader, set: SetRow) {
       reviewedBy: version.reviewedBy,
       reviewedAt: version.reviewedAt,
       questionStatus: question.status,
-      generationStatus: run.status,
+      generationStatus: run?.status ?? null,
     };
   });
   const publishFingerprint = createHash('sha256')

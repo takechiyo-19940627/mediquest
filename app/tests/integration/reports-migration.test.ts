@@ -87,7 +87,19 @@ insert into study_items(id,session_id,question_version_id,position,selected_ids_
     migrateDatabase(c, migrations);
     expect(
       tables.map((table) => c.client.prepare(`select * from ${table}`).all()),
-    ).toEqual(before);
+    ).toEqual(
+      before.map((rows, index) =>
+        rows.map((row) => ({
+          ...(row as Record<string, unknown>),
+          ...(tables[index] === 'question_versions'
+            ? { derived_from_version_id: null }
+            : {}),
+          ...(tables[index] === 'question_sets'
+            ? { supersedes_set_id: null, supersedes_revision: null }
+            : {}),
+        })),
+      ),
+    );
     expect(c.client.prepare('select * from issue_reports').all()).toEqual([]);
     const insert = c.client.prepare(
       'insert into issue_reports(reported_by,question_version_id,study_item_id,message,status,created_at) values(?,?,?,?,?,1)',

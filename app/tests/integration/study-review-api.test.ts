@@ -1,8 +1,9 @@
+import { setupSharedHttpServer } from '../fixtures/http-server';
 import { randomUUID } from 'node:crypto';
 import { request } from 'node:http';
 import { fileURLToPath } from 'node:url';
 import { afterAll, describe, expect, it } from 'vitest';
-import { setup, fetch, startServer, getServerLogs } from '@nuxt/test-utils/e2e';
+import { fetch, startServer, getServerLogs } from '@nuxt/test-utils/e2e';
 import { catalogFixture, privateMarkers } from '../fixtures/catalog';
 // Issue #44 HTTP contract: four published questions (positions 0-3, version
 // f.ids[i]) so that a completed parent can mix correct and wrong answers.
@@ -143,9 +144,8 @@ function rawStatus(route: string, headers: Record<string, string>) {
   });
 }
 describe('review start HTTP', async () => {
-  await setup({
+  await setupSharedHttpServer({
     rootDir: fileURLToPath(new URL('../..', import.meta.url)),
-    server: true,
     port: 3206,
     env: {
       MEDIQUEST_DB_PATH: f.database,

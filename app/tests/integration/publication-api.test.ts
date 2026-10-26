@@ -1,6 +1,9 @@
+import { setupSharedHttpServer } from '../fixtures/http-server';
 import { describe, it, expect, afterAll } from 'vitest';
-import { setup, fetch, startServer, getServerLogs } from '@nuxt/test-utils/e2e';
+import { fetch, startServer, getServerLogs } from '@nuxt/test-utils/e2e';
 import { fileURLToPath } from 'node:url';
+import { getSet, confirmVersion } from '../../server/services/review/service';
+import { replaceItems } from '../../server/services/publication/service';
 import { publicationFixture } from '../fixtures/publication';
 const f = await publicationFixture();
 const base = `/api/admin/sets/${f.run.setId}`;
@@ -23,9 +26,8 @@ const request = (detail: { revision: number; publishFingerprint: string }) => ({
   confirmed: true,
 });
 describe('publication HTTP', async () => {
-  await setup({
+  await setupSharedHttpServer({
     rootDir: fileURLToPath(new URL('../..', import.meta.url)),
-    server: true,
     port: 3198,
     env: {
       MEDIQUEST_DB_PATH: f.database,
@@ -121,6 +123,184 @@ describe('publication HTTP', async () => {
     expect((await get()).revision).toBe(0);
     f.c.client.exec('drop trigger fail_items');
     expect(JSON.stringify(getServerLogs())).not.toContain('PRIVATE_SQL');
+  });
+  it('rejects a fully reviewed and selected revision with HTTP409 before any publication side effect', async () => {
+    const next = await f.generate();
+    for (const v of getSet(f.c, next.setId).candidates)
+      confirmVersion(f.c, next.setId, v.id, {
+        fingerprint: v.fingerprint,
+        confirmed: true,
+        acknowledgeQuoteMismatch: false,
+      });
+    replaceItems(f.c, next.setId, {
+      expectedRevision: 0,
+      versionIds: getSet(f.c, next.setId).candidates.map((v) => v.id),
+    });
+    f.c.client
+      .prepare(
+        'update question_sets set supersedes_set_id=?,supersedes_revision=0 where id=?',
+      )
+      .run(f.run.setId, next.setId);
+    const d = getSet(f.c, next.setId);
+    const before = f.c.client
+      .prepare('select * from question_sets order by id')
+      .all();
+    const publishNext = () =>
+      fetch(`/api/admin/sets/${next.setId}/publish`, {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify(request(d)),
+      });
+    f.c.client.exec("update users set role='learner'");
+    expect((await publishNext()).status).toBe(403);
+    f.c.client.exec("update users set role='admin'");
+    const rejected = await publishNext();
+    expect(rejected.status).toBe(409);
+    expect(rejected.headers.get('cache-control')).toBe('no-store');
+    expect(
+      f.c.client.prepare('select * from question_sets order by id').all(),
+    ).toEqual(before);
+    expect(
+      f.c.client.prepare('select * from set_revision_requests').all(),
+    ).toEqual([]);
+    f.c.client
+      .prepare(
+        'update question_sets set supersedes_set_id=null,supersedes_revision=null where id=?',
+      )
+      .run(next.setId);
+    expect((await publishNext()).status).toBe(201);
+    expect((await publishNext()).status).toBe(200);
+    expect(
+      (
+        await fetch(`/api/admin/sets/${next.setId}/archive`, {
+          method: 'POST',
+          headers: { 'content-type': 'application/json' },
+          body: '{}',
+        })
+      ).status,
+    ).toBe(200);
+  });
+  it('uses explicit membership in administrative HTTP counts, nullable provenance, review and selection', async () => {
+    const next = await f.generate();
+    const sharedId = f.ids[0]!;
+    const parentId = f.ids[1]!;
+    f.c.client
+      .prepare(
+        'insert into set_candidates(set_id,question_id,question_version_id) select ?,question_id,id from question_versions where id=?',
+      )
+      .run(next.setId, sharedId);
+    const derived = f.c.client
+      .prepare(
+        `insert into question_versions(question_id,version_no,body,choices_json,answer_ids_json,explanation,quote,quote_verified,generation_run_id,derived_from_version_id,created_at)
+      select question_id,2,body,choices_json,answer_ids_json,explanation,quote,quote_verified,null,id,created_at from question_versions where id=? returning id`,
+      )
+      .get(parentId) as { id: number };
+    f.c.client
+      .prepare(
+        'insert into set_candidates(set_id,question_id,question_version_id) select ?,question_id,id from question_versions where id=?',
+      )
+      .run(next.setId, derived.id);
+    const path = `/api/admin/sets/${next.setId}`;
+    const detail = await (await fetch(path)).json();
+    expect(detail.candidates).toHaveLength(5);
+    const candidate = detail.candidates.find(
+      (v: { id: number }) => v.id === derived.id,
+    );
+    expect(candidate).toMatchObject({
+      generationRunId: null,
+      derivedFromVersionId: parentId,
+      reviewedAt: null,
+    });
+    const list = await (await fetch('/api/admin/sets')).json();
+    expect(
+      list.items.find((s: { id: number }) => s.id === next.setId),
+    ).toMatchObject({ candidateCount: 5, reviewedCount: 1 });
+    const call = (suffix: string, body: unknown) =>
+      fetch(`${path}/${suffix}`, {
+        method: 'PUT',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify(body),
+      });
+    const shared = detail.candidates.find(
+      (v: { id: number }) => v.id === sharedId,
+    );
+    expect(
+      (
+        await call(`versions/${sharedId}/review`, {
+          fingerprint: shared.fingerprint,
+          confirmed: true,
+          acknowledgeQuoteMismatch: false,
+        })
+      ).status,
+    ).toBe(200);
+    expect(
+      (
+        await call(`versions/${derived.id}/review`, {
+          fingerprint: candidate.fingerprint,
+          confirmed: true,
+          acknowledgeQuoteMismatch: false,
+        })
+      ).status,
+    ).toBe(200);
+    expect(
+      (
+        await call('items', {
+          expectedRevision: 0,
+          versionIds: [sharedId, derived.id],
+        })
+      ).status,
+    ).toBe(200);
+    expect(
+      (await (await fetch(path)).json()).items.map(
+        (v: { generationStatus: string | null }) => v.generationStatus,
+      ),
+    ).toEqual(['succeeded', null]);
+    expect(
+      (await call('items', { expectedRevision: 1, versionIds: [f.ids[2]] }))
+        .status,
+    ).toBe(404);
+    const before = f.c.client
+      .prepare('select * from question_versions order by id')
+      .all();
+    const v = detail.candidates.find((v: { id: number }) => v.id === sharedId);
+    expect(
+      (
+        await call(`versions/${sharedId}/content`, {
+          expectedRevision: 1,
+          expectedFingerprint: v.fingerprint,
+          body: 'changed',
+          choices: v.choices,
+          answerIds: v.answerIds,
+          explanation: v.explanation,
+          quote: v.quote,
+        })
+      ).status,
+    ).toBe(409);
+    // A source mismatch is a service boundary, not a cross-table CHECK.
+    f.c.client.exec(
+      "insert into sources(title,body,created_by,created_at) values('foreign','foreign',1,1)",
+    );
+    f.c.client
+      .prepare('update question_sets set source_id=2 where id=?')
+      .run(next.setId);
+    expect((await fetch(path)).status).toBe(409);
+    expect(
+      (await call('items', { expectedRevision: 1, versionIds: [sharedId] }))
+        .status,
+    ).toBe(409);
+    f.c.client
+      .prepare('update question_sets set source_id=1 where id=?')
+      .run(next.setId);
+    expect(
+      f.c.client.prepare('select * from question_versions order by id').all(),
+    ).toEqual(before);
+    // Remove fixture sharing so subsequent tests exercise the original set independently.
+    f.c.client.prepare('delete from set_items where set_id=?').run(next.setId);
+    f.c.client
+      .prepare(
+        'delete from set_candidates where set_id=? and question_version_id in (?,?)',
+      )
+      .run(next.setId, sharedId, derived.id);
   });
   it('serializes competing selections, selection against publish, and exact concurrent publication replay', async () => {
     const responses = await Promise.all([

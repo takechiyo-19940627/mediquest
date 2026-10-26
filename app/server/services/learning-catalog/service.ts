@@ -27,7 +27,7 @@ const fields = {
   title: questionSets.title,
   description: questionSets.description,
   publishedAt: questionSets.publishedAt,
-  availableQuestionCount: sql<number>`(select count(distinct q.id) from set_items i join question_versions v on i.question_version_id=v.id join questions q on v.question_id=q.id join generation_runs r on v.generation_run_id=r.id where i.set_id=question_sets.id and q.status='active' and q.source_id=question_sets.source_id and r.source_id=question_sets.source_id and r.set_id=question_sets.id and r.status='succeeded' and v.invalidated_at is null and v.reviewed_by is not null and v.reviewed_at is not null)`,
+  availableQuestionCount: sql<number>`(select count(distinct q.id) from set_items i join question_versions v on i.question_version_id=v.id join questions q on v.question_id=q.id join set_candidates c on c.set_id=i.set_id and c.question_version_id=v.id and c.question_id=v.question_id left join generation_runs r on v.generation_run_id=r.id where i.set_id=question_sets.id and q.status='active' and q.source_id=question_sets.source_id and ((v.generation_run_id is not null and r.source_id=question_sets.source_id and r.status='succeeded') or (v.generation_run_id is null and exists(select 1 from question_versions parent where parent.id=v.derived_from_version_id and parent.question_id=v.question_id))) and v.invalidated_at is null and v.reviewed_by is not null and v.reviewed_at is not null)`,
 };
 export function listPublishedSets(
   connection: Connection,

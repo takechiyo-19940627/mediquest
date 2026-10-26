@@ -1,8 +1,9 @@
+import { setupSharedHttpServer } from '../fixtures/http-server';
 import { randomUUID } from 'node:crypto';
 import { request } from 'node:http';
 import { fileURLToPath } from 'node:url';
 import { afterAll, describe, expect, it } from 'vitest';
-import { setup, fetch, startServer, getServerLogs } from '@nuxt/test-utils/e2e';
+import { fetch, startServer, getServerLogs } from '@nuxt/test-utils/e2e';
 import { catalogFixture } from '../fixtures/catalog';
 import { startSession } from '../../server/services/study/service';
 import { createReport } from '../../server/services/reports/service';
@@ -28,9 +29,8 @@ const answer = (index: number) =>
   );
 let report = make();
 describe('admin report resolution HTTP', async () => {
-  await setup({
+  await setupSharedHttpServer({
     rootDir: fileURLToPath(new URL('../..', import.meta.url)),
-    server: true,
     port: 3203,
     env: {
       MEDIQUEST_DB_PATH: f.database,

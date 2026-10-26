@@ -100,6 +100,16 @@ it('saves consistent unreviewed draft candidates and makes duplicate completion 
     )
     .all();
   expect(rows).toHaveLength(2);
+  expect(
+    c.client
+      .prepare(
+        'select set_id,question_id,question_version_id from set_candidates order by id',
+      )
+      .all(),
+  ).toEqual([
+    { set_id: run.setId, question_id: 1, question_version_id: 1 },
+    { set_id: run.setId, question_id: 2, question_version_id: 2 },
+  ]);
   for (const row of rows)
     expect(row).toMatchObject({
       source_id: 1,
@@ -189,6 +199,9 @@ it('keeps one in-flight run/provider across concurrent replays and holds no tran
   settle({ kind: 'success', output: output() });
   expect((await original).status).toBe('succeeded');
   expect(openConnections).toBe(0);
+  expect(
+    c.client.prepare('select count(*) n from set_candidates').get(),
+  ).toEqual({ n: 1 });
 });
 it.each([
   ['failed', 'provider_failed', async () => ({ kind: 'failed' as const })],
@@ -458,4 +471,40 @@ it('resolves settings only for new requests and preserves replay while running o
     complete,
   );
   expect(slow).toHaveBeenCalledTimes(1);
+});
+
+it('rolls back every generated row when candidate insertion fails', async () => {
+  const { connection: c, connect } = fixture();
+  c.client.exec(
+    "create trigger fail_candidate before insert on set_candidates when new.question_id=2 begin select raise(abort,'candidate_failure'); end",
+  );
+  const run = await generateQuestions(
+    input({ requestedCount: 2 }),
+    config,
+    provider,
+    connect,
+  );
+  expect(run).toMatchObject({ status: 'failed', errorCode: 'storage_failed' });
+  for (const table of ['questions', 'question_versions', 'set_candidates'])
+    expect(c.client.prepare(`select count(*) n from ${table}`).get()).toEqual({
+      n: 0,
+    });
+});
+it('rejects changed material identity before storing any generated candidate', async () => {
+  const { connection: c, connect } = fixture();
+  const run = await generateQuestions(
+    input(),
+    config,
+    async () => {
+      createSource(c, { title: '別教材', body: sourceText }, randomUUID());
+      c.client.exec('update question_sets set source_id=2');
+      return { kind: 'success', output: output() };
+    },
+    connect,
+  );
+  expect(run).toMatchObject({ status: 'failed', errorCode: 'storage_failed' });
+  for (const table of ['questions', 'question_versions', 'set_candidates'])
+    expect(c.client.prepare(`select count(*) n from ${table}`).get()).toEqual({
+      n: 0,
+    });
 });

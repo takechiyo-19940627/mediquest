@@ -1,8 +1,9 @@
+import { setupSharedHttpServer } from '../fixtures/http-server';
 import { randomUUID } from 'node:crypto';
 import { request } from 'node:http';
 import { fileURLToPath } from 'node:url';
 import { afterAll, describe, expect, it } from 'vitest';
-import { setup, fetch, startServer, getServerLogs } from '@nuxt/test-utils/e2e';
+import { fetch, startServer, getServerLogs } from '@nuxt/test-utils/e2e';
 import { catalogFixture, privateMarkers } from '../fixtures/catalog';
 import { startSession } from '../../server/services/study/service';
 const f = await catalogFixture();
@@ -25,9 +26,8 @@ const snapshot = () =>
   ].map((t) => f.c.client.prepare(`select * from ${t}`).all());
 let reportId: number;
 describe('issue reporting HTTP', async () => {
-  await setup({
+  await setupSharedHttpServer({
     rootDir: fileURLToPath(new URL('../..', import.meta.url)),
-    server: true,
     port: 3202,
     env: {
       MEDIQUEST_DB_PATH: f.database,

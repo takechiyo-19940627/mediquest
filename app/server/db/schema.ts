@@ -1,6 +1,7 @@
 import { sql } from 'drizzle-orm';
 import {
   check,
+  foreignKey,
   integer,
   sqliteTable,
   text,
@@ -72,12 +73,24 @@ export const questionSets = sqliteTable(
       onDelete: 'restrict',
     }),
     publishedAt: integer('published_at'),
+    supersedesSetId: integer('supersedes_set_id').references(
+      (): AnySQLiteColumn => questionSets.id,
+      { onDelete: 'restrict' },
+    ),
+    supersedesRevision: integer('supersedes_revision'),
     revision: integer('revision').notNull().default(0),
     publishRequestRevision: integer('publish_request_revision'),
     publishRequestFingerprint: text('publish_request_fingerprint'),
     createdAt: integer('created_at').notNull(),
   },
   (table) => [
+    check(
+      'question_sets_supersedes_check',
+      sql`(${table.supersedesSetId} IS NULL AND ${table.supersedesRevision} IS NULL) OR (${table.supersedesSetId} IS NOT NULL AND ${table.supersedesRevision} IS NOT NULL)`,
+    ),
+    uniqueIndex('question_sets_published_successor_unique')
+      .on(table.supersedesSetId)
+      .where(sql`${table.publishedAt} IS NOT NULL`),
     check(
       'question_sets_status_check',
       sql`${table.status} IN ('draft','published','archived')`,
@@ -182,12 +195,25 @@ export const questionVersions = sqliteTable(
       onDelete: 'restrict',
     }),
     invalidationReason: text('invalidation_reason'),
-    generationRunId: integer('generation_run_id')
-      .notNull()
-      .references(() => generationRuns.id, { onDelete: 'restrict' }),
+    generationRunId: integer('generation_run_id').references(
+      () => generationRuns.id,
+      { onDelete: 'restrict' },
+    ),
+    derivedFromVersionId: integer('derived_from_version_id').references(
+      (): AnySQLiteColumn => questionVersions.id,
+      { onDelete: 'restrict' },
+    ),
     createdAt: integer('created_at').notNull(),
   },
   (table) => [
+    unique('question_version_id_question_unique').on(
+      table.id,
+      table.questionId,
+    ),
+    check(
+      'question_version_provenance_check',
+      sql`(${table.generationRunId} IS NOT NULL AND ${table.derivedFromVersionId} IS NULL) OR (${table.generationRunId} IS NULL AND ${table.derivedFromVersionId} IS NOT NULL)`,
+    ),
     unique('question_version_number_unique').on(
       table.questionId,
       table.versionNo,
@@ -198,6 +224,57 @@ export const questionVersions = sqliteTable(
     ),
     check('question_version_positive_check', sql`${table.versionNo} >= 1`),
     check('question_quote_boolean_check', sql`${table.quoteVerified} IN (0,1)`),
+  ],
+);
+
+// Material identity and same-question ancestry require service validation.
+// Stage 1 exposes no revision-request or derived-version creation API.
+export const setCandidates = sqliteTable(
+  'set_candidates',
+  {
+    id: integer('id').primaryKey({ autoIncrement: true }),
+    setId: integer('set_id')
+      .notNull()
+      .references(() => questionSets.id, { onDelete: 'restrict' }),
+    questionId: integer('question_id').notNull(),
+    questionVersionId: integer('question_version_id').notNull(),
+  },
+  (table) => [
+    unique('set_candidate_question_unique').on(table.setId, table.questionId),
+    unique('set_candidate_version_unique').on(
+      table.setId,
+      table.questionVersionId,
+    ),
+    foreignKey({
+      columns: [table.questionVersionId, table.questionId],
+      foreignColumns: [questionVersions.id, questionVersions.questionId],
+    }).onDelete('restrict'),
+  ],
+);
+
+export const setRevisionRequests = sqliteTable(
+  'set_revision_requests',
+  {
+    id: integer('id').primaryKey({ autoIncrement: true }),
+    requestedBy: integer('requested_by')
+      .notNull()
+      .references(() => users.id, { onDelete: 'restrict' }),
+    requestKey: text('request_key').notNull(),
+    sourceSetId: integer('source_set_id')
+      .notNull()
+      .references(() => questionSets.id, { onDelete: 'restrict' }),
+    sourceRevision: integer('source_revision').notNull(),
+    requestFingerprint: text('request_fingerprint').notNull(),
+    createdSetId: integer('created_set_id')
+      .notNull()
+      .references(() => questionSets.id, { onDelete: 'restrict' }),
+    createdAt: integer('created_at').notNull(),
+  },
+  (table) => [
+    unique('set_revision_request_user_key_unique').on(
+      table.requestedBy,
+      table.requestKey,
+    ),
   ],
 );
 
@@ -214,6 +291,10 @@ export const setItems = sqliteTable(
     position: integer('position').notNull(),
   },
   (table) => [
+    foreignKey({
+      columns: [table.setId, table.questionVersionId],
+      foreignColumns: [setCandidates.setId, setCandidates.questionVersionId],
+    }).onDelete('restrict'),
     unique('set_item_position_unique').on(table.setId, table.position),
     unique('set_item_version_unique').on(table.setId, table.questionVersionId),
     check('set_item_position_check', sql`${table.position} >= 0`),

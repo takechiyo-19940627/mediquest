@@ -1,12 +1,14 @@
-import { nextRevision, publicationState } from '../publication/state';
-import { and, desc, eq, lt, or, sql, isNotNull } from 'drizzle-orm';
+import {
+  nextRevision,
+  publicationState,
+  versionForSet,
+} from '../publication/state';
+import { and, desc, eq, lt, or, sql, isNotNull, ne } from 'drizzle-orm';
 import type { Connection } from '../../db/connection';
 import {
   questionSets,
   questionVersions,
-  questions,
-  generationRuns,
-  sources,
+  setCandidates,
   setItems,
   studyItems,
 } from '../../db/schema';
@@ -16,23 +18,19 @@ import type { sourcePage } from '../source-input';
 import { contentInput, fingerprint, ReviewError, reviewInput } from './input';
 
 function candidates(db: Pick<Connection['db'], 'select'>, setId: number) {
+  const set = db
+    .select()
+    .from(questionSets)
+    .where(eq(questionSets.id, setId))
+    .get();
+  if (!set) throw new ReviewError('missing');
   return db
-    .select({
-      version: questionVersions,
-      question: questions,
-      run: generationRuns,
-      source: sources,
-    })
-    .from(questionVersions)
-    .innerJoin(
-      generationRuns,
-      eq(questionVersions.generationRunId, generationRuns.id),
-    )
-    .innerJoin(questions, eq(questionVersions.questionId, questions.id))
-    .innerJoin(sources, eq(generationRuns.sourceId, sources.id))
-    .where(eq(generationRuns.setId, setId))
-    .orderBy(questionVersions.id)
-    .all();
+    .select({ id: setCandidates.questionVersionId })
+    .from(setCandidates)
+    .where(eq(setCandidates.setId, setId))
+    .orderBy(setCandidates.questionVersionId)
+    .all()
+    .map(({ id }) => versionForSet(db, set, id));
 }
 export function listSets(
   connection: Connection,
@@ -47,8 +45,8 @@ export function listSets(
       status: questionSets.status,
       sourceId: questionSets.sourceId,
       createdAt: questionSets.createdAt,
-      candidateCount: sql<number>`(select count(*) from question_versions v join generation_runs r on v.generation_run_id=r.id where r.set_id=question_sets.id)`,
-      reviewedCount: sql<number>`(select count(*) from question_versions v join generation_runs r on v.generation_run_id=r.id where r.set_id=question_sets.id and v.reviewed_by is not null and v.reviewed_at is not null)`,
+      candidateCount: sql<number>`(select count(*) from set_candidates c join question_versions v on c.question_version_id=v.id where c.set_id=question_sets.id)`,
+      reviewedCount: sql<number>`(select count(*) from set_candidates c join question_versions v on c.question_version_id=v.id where c.set_id=question_sets.id and v.reviewed_by is not null and v.reviewed_at is not null)`,
     })
     .from(questionSets)
     .where(
@@ -83,18 +81,13 @@ export function getSet(connection: Connection, id: number) {
       .get();
     if (!set) throw new ReviewError('missing');
     const rows = candidates(tx, id);
-    if (
-      rows.some(
-        ({ question, run }) =>
-          question.sourceId !== set.sourceId || run.sourceId !== set.sourceId,
-      )
-    )
-      throw new ReviewError('conflict');
     return {
       ...set,
       ...publicationState(tx, set),
       candidates: rows.map(({ version, source }) => ({
         id: version.id,
+        generationRunId: version.generationRunId,
+        derivedFromVersionId: version.derivedFromVersionId,
         questionId: version.questionId,
         versionNo: version.versionNo,
         body: version.body,
@@ -110,6 +103,8 @@ export function getSet(connection: Connection, id: number) {
     };
   });
 }
+// Sharing alone does not forbid confirming unchanged content. Content edits
+// below cannot clear the confirmation of a shared version or an immutable parent.
 export function confirmVersion(
   connection: Connection,
   setId: number,
@@ -135,6 +130,11 @@ export function confirmVersion(
         set.status !== 'draft' ||
         set.publishedAt !== null ||
         tx
+          .select({ id: questionVersions.id })
+          .from(questionVersions)
+          .where(eq(questionVersions.derivedFromVersionId, versionId))
+          .get() !== undefined ||
+        tx
           .select({ id: setItems.id })
           .from(setItems)
           .innerJoin(questionSets, eq(setItems.setId, questionSets.id))
@@ -145,10 +145,16 @@ export function confirmVersion(
             ),
           )
           .get() !== undefined ||
-        run.status !== 'succeeded' ||
+        (version.generationRunId !== null && run?.status !== 'succeeded') ||
+        tx
+          .select({ id: studyItems.id })
+          .from(studyItems)
+          .where(eq(studyItems.questionVersionId, versionId))
+          .get() !== undefined ||
+        version.invalidatedAt !== null ||
         question.status !== 'active' ||
         question.sourceId !== set.sourceId ||
-        run.sourceId !== set.sourceId
+        (run !== null && run.sourceId !== set.sourceId)
       )
         throw new ReviewError('conflict');
       let quoteVerified: boolean;
@@ -237,6 +243,21 @@ export function updateVersionContent(
         set.status !== 'draft' ||
         set.publishedAt !== null ||
         tx
+          .select({ id: setCandidates.id })
+          .from(setCandidates)
+          .where(
+            and(
+              eq(setCandidates.questionVersionId, versionId),
+              ne(setCandidates.setId, setId),
+            ),
+          )
+          .get() !== undefined ||
+        tx
+          .select({ id: questionVersions.id })
+          .from(questionVersions)
+          .where(eq(questionVersions.derivedFromVersionId, versionId))
+          .get() !== undefined ||
+        tx
           .select({ id: setItems.id })
           .from(setItems)
           .innerJoin(questionSets, eq(setItems.setId, questionSets.id))
@@ -253,10 +274,10 @@ export function updateVersionContent(
           .where(eq(studyItems.questionVersionId, versionId))
           .get() !== undefined ||
         version.invalidatedAt !== null ||
-        run.status !== 'succeeded' ||
+        (version.generationRunId !== null && run?.status !== 'succeeded') ||
         question.status !== 'active' ||
         question.sourceId !== set.sourceId ||
-        run.sourceId !== set.sourceId ||
+        (run !== null && run.sourceId !== set.sourceId) ||
         (version.reviewedBy === null) !== (version.reviewedAt === null)
       )
         throw new ReviewError('conflict');

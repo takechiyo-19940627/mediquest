@@ -1,10 +1,11 @@
+import { setupSharedHttpServer } from '../fixtures/http-server';
 import { mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { randomUUID } from 'node:crypto';
 import { afterAll, describe, expect, it } from 'vitest';
-import { fetch, setup, startServer, getServerLogs } from '@nuxt/test-utils/e2e';
+import { fetch, startServer, getServerLogs } from '@nuxt/test-utils/e2e';
 import { openDatabase } from '../../server/db/connection';
 import { migrateDatabase } from '../../server/db/migrate';
 import { seedAdministrator } from '../../server/db/seed';
@@ -40,9 +41,8 @@ const put = (id: number, body: unknown) =>
     body: JSON.stringify(body),
   });
 describe('administrator candidate review HTTP', async () => {
-  await setup({
+  await setupSharedHttpServer({
     rootDir: root,
-    server: true,
     port: 3197,
     env: {
       ...env,

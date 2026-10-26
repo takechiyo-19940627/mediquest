@@ -141,18 +141,27 @@ it('revalidates candidate review, status, format and logical identity before sel
     ).toThrow('conflict');
     c.client.exec(restore!);
   }
+  // Deliberately corrupt the candidate/version composite identity to exercise
+  // service rejection as well as the schema-level FK tests.
+  c.client.pragma('foreign_keys=OFF');
   c.client
     .prepare(
       'update question_versions set question_id=?,version_no=2 where id=?',
     )
     .run(detail().candidates[0]!.questionId, ids[1]);
+  c.client.pragma('foreign_keys=ON');
   expect(() =>
     replaceItems(c, run.setId, {
       expectedRevision: 1,
       versionIds: [ids[0], ids[1]],
     }),
   ).toThrow('conflict');
-  expect(detail().status).toBe('draft');
+  expect(() => detail()).toThrow('conflict');
+  expect(
+    c.client
+      .prepare('select status from question_sets where id=?')
+      .get(run.setId),
+  ).toEqual({ status: 'draft' });
 });
 it('enforces selection DB constraints and protects versions referenced by another historical set', async () => {
   const { c, run, ids, detail, generate } = await fixture();
@@ -169,6 +178,11 @@ it('enforces selection DB constraints and protects versions referenced by anothe
     [run.setId, 99999, 1],
   ])
     expect(() => insert.run(...row)).toThrow();
+  c.client
+    .prepare(
+      'insert into set_candidates(set_id,question_id,question_version_id) select ?,question_id,id from question_versions where id=?',
+    )
+    .run(other.setId, ids[0]);
   insert.run(other.setId, ids[0], 0);
   c.client
     .prepare(

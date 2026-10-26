@@ -1,8 +1,9 @@
+import { setupSharedHttpServer } from '../fixtures/http-server';
 import { randomUUID } from 'node:crypto';
 import { request } from 'node:http';
 import { fileURLToPath } from 'node:url';
 import { afterAll, describe, expect, it } from 'vitest';
-import { setup, fetch, startServer, getServerLogs } from '@nuxt/test-utils/e2e';
+import { fetch, startServer, getServerLogs } from '@nuxt/test-utils/e2e';
 import { catalogFixture, privateMarkers } from '../fixtures/catalog';
 const f = await catalogFixture(3);
 type Item = {
@@ -88,9 +89,8 @@ function rawStatus(route: string, headers: Record<string, string>) {
   });
 }
 describe('skip HTTP', async () => {
-  await setup({
+  await setupSharedHttpServer({
     rootDir: fileURLToPath(new URL('../..', import.meta.url)),
-    server: true,
     port: 3205,
     env: {
       MEDIQUEST_DB_PATH: f.database,

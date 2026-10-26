@@ -1,6 +1,7 @@
+import { setupSharedHttpServer } from '../fixtures/http-server';
 import { request } from 'node:http';
 import { describe, it, expect, afterAll } from 'vitest';
-import { setup, fetch, startServer, getServerLogs } from '@nuxt/test-utils/e2e';
+import { fetch, startServer, getServerLogs } from '@nuxt/test-utils/e2e';
 import { fileURLToPath } from 'node:url';
 import { catalogFixture, privateMarkers } from '../fixtures/catalog';
 const f = await catalogFixture();
@@ -36,9 +37,8 @@ function noSecrets(value: unknown) {
     expect(text).not.toContain(marker);
 }
 describe('local learning catalog HTTP', async () => {
-  await setup({
+  await setupSharedHttpServer({
     rootDir: fileURLToPath(new URL('../..', import.meta.url)),
-    server: true,
     port: 3199,
     env: {
       MEDIQUEST_DB_PATH: f.database,
