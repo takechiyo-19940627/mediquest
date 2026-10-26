@@ -10,8 +10,14 @@ import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { randomUUID } from 'node:crypto';
 import { request } from 'node:http';
-import { afterAll, expect, it, describe } from 'vitest';
-import { fetch, setup, startServer, getServerLogs } from '@nuxt/test-utils/e2e';
+import { afterAll, expect, it, describe, inject } from 'vitest';
+import {
+  fetch,
+  setup,
+  startServer,
+  getServerLogs,
+  useTestContext,
+} from '@nuxt/test-utils/e2e';
 import { openDatabase } from '../../server/db/connection';
 import { migrateDatabase } from '../../server/db/migrate';
 import { seedAdministrator } from '../../server/db/seed';
@@ -91,6 +97,12 @@ describe('generation HTTP with test-only transport injection', async () => {
     } finally {
       rmSync(directory, { recursive: true, force: true });
     }
+  });
+  it('keeps the test transport in a separate artifact', () => {
+    const output = useTestContext().nuxt!.options.nitro.output!.dir!;
+    expect(output).not.toBe(inject('mediquestNuxtOutputDir'));
+    const entry = readFileSync(join(output, 'server/index.mjs'), 'utf8');
+    expect(entry).toBeTruthy();
   });
   it('creates once and returns only safe status metadata, including replay after settings are removed', async () => {
     const key = randomUUID();

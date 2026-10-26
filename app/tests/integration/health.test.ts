@@ -1,11 +1,11 @@
+import { setupSharedHttpServer } from '../fixtures/http-server';
 import { fileURLToPath } from 'node:url';
 import { describe, expect, it } from 'vitest';
-import { $fetch, setup } from '@nuxt/test-utils/e2e';
+import { $fetch } from '@nuxt/test-utils/e2e';
 
 describe('Nuxt HTTP server', async () => {
-  await setup({
+  await setupSharedHttpServer({
     rootDir: fileURLToPath(new URL('../..', import.meta.url)),
-    server: true,
   });
 
   it('serves the public liveness API through HTTP', async () => {

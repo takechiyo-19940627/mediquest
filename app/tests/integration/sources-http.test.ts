@@ -1,3 +1,4 @@
+import { setupSharedHttpServer } from '../fixtures/http-server';
 import { mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
@@ -5,7 +6,7 @@ import { fileURLToPath } from 'node:url';
 import { randomUUID } from 'node:crypto';
 import { request as nodeRequest } from 'node:http';
 import { afterAll, describe, expect, it } from 'vitest';
-import { setup, fetch, startServer, getServerLogs } from '@nuxt/test-utils/e2e';
+import { fetch, startServer, getServerLogs } from '@nuxt/test-utils/e2e';
 import { openDatabase } from '../../server/db/connection';
 import { migrateDatabase } from '../../server/db/migrate';
 import { seedAdministrator } from '../../server/db/seed';
@@ -33,9 +34,8 @@ async function post(body: unknown, key = randomUUID()) {
 }
 
 describe('sources over real HTTP', async () => {
-  await setup({
+  await setupSharedHttpServer({
     rootDir: fileURLToPath(new URL('../..', import.meta.url)),
-    server: true,
     port: 3195,
     env: {
       MEDIQUEST_DB_PATH: database,

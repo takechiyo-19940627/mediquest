@@ -1,7 +1,8 @@
+import { setupSharedHttpServer } from '../fixtures/http-server';
 import { request } from 'node:http';
 import { fileURLToPath } from 'node:url';
 import { afterAll, describe, expect, it } from 'vitest';
-import { fetch, setup, startServer, getServerLogs } from '@nuxt/test-utils/e2e';
+import { fetch, startServer, getServerLogs } from '@nuxt/test-utils/e2e';
 import { publicationFixture } from '../fixtures/publication';
 import { candidate, sourceText } from '../fixtures/generation';
 import { confirmVersion, getSet } from '../../server/services/review/service';
@@ -128,9 +129,8 @@ function rawStatus(route: string, headers: Record<string, string>) {
   });
 }
 describe('candidate content edit HTTP', async () => {
-  await setup({
+  await setupSharedHttpServer({
     rootDir: fileURLToPath(new URL('../..', import.meta.url)),
-    server: true,
     port: PORT,
     env: {
       MEDIQUEST_DB_PATH: f.database,

@@ -1,5 +1,6 @@
+import { setupSharedHttpServer } from '../fixtures/http-server';
 import { describe, it, expect, afterAll } from 'vitest';
-import { setup, fetch, startServer, getServerLogs } from '@nuxt/test-utils/e2e';
+import { fetch, startServer, getServerLogs } from '@nuxt/test-utils/e2e';
 import { fileURLToPath } from 'node:url';
 import { getSet, confirmVersion } from '../../server/services/review/service';
 import { replaceItems } from '../../server/services/publication/service';
@@ -25,9 +26,8 @@ const request = (detail: { revision: number; publishFingerprint: string }) => ({
   confirmed: true,
 });
 describe('publication HTTP', async () => {
-  await setup({
+  await setupSharedHttpServer({
     rootDir: fileURLToPath(new URL('../..', import.meta.url)),
-    server: true,
     port: 3198,
     env: {
       MEDIQUEST_DB_PATH: f.database,
