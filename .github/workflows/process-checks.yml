@@ -15,7 +15,12 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: '22'
+      - name: Install pinned process test fixtures
+        run: npm ci --prefix scripts/process-checks --ignore-scripts --no-audit --no-fund
       - name: Validate launcher syntax
         run: bash -n scripts/takt.sh
       - name: Test quality gate
+        env:
+          TAKT_SOURCE: ${{ github.workspace }}/scripts/process-checks/node_modules/takt
+          CODEX_SDK_SOURCE: ${{ github.workspace }}/scripts/process-checks/node_modules/@openai/codex-sdk/dist/index.js
         run: node --test scripts/*.test.mjs

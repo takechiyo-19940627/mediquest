@@ -1,0 +1,37 @@
+import test from 'node:test';
+import assert from 'node:assert/strict';
+import { realpathSync, mkdtempSync, mkdirSync, readFileSync, writeFileSync, rmSync, existsSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { dirname, join } from 'node:path';
+import { prepareRuntime, verifyPatchedRuntime, target, taskTarget } from './takt-local-patch.mjs';
+import { sdkTarget } from './codex-sdk-local-patch.mjs';
+if (!process.env.TAKT_SOURCE) throw new Error('TAKT_SOURCE must point to unmodified TAKT 0.49.0');
+test('fresh runtime preparation verifies SDK and rejects tampering/version drift', t => {
+  const root = realpathSync(mkdtempSync(join(tmpdir(), 'takt-sdk-runtime-')));
+  t.after(() => rmSync(root, { recursive: true, force: true }));
+  const source = join(root, 'source');
+  const put = (name, text) => { mkdirSync(dirname(join(source, name)), { recursive: true }); writeFileSync(join(source, name), text); };
+  const fixture = name => readFileSync(join(process.env.TAKT_SOURCE, name), 'utf8');
+  put('package.json', fixture('package.json'));
+  put(target, fixture(target));
+  put(taskTarget, fixture(taskTarget));
+  // npm may hoist the SDK beside TAKT; use its independently pinned source.
+  const sdkSource = process.env.CODEX_SDK_SOURCE;
+  if (!sdkSource) throw new Error('CODEX_SDK_SOURCE must point to unmodified Codex SDK 0.137.0 dist/index.js');
+  put('node_modules/@openai/codex-sdk/package.json', readFileSync(join(dirname(sdkSource), '../package.json'), 'utf8'));
+  put(sdkTarget, readFileSync(sdkSource, 'utf8'));
+  const before = readFileSync(join(source, sdkTarget), 'utf8');
+  const destination = join(root, 'patched');
+  assert.equal(prepareRuntime(source, destination), destination);
+  assert.equal(verifyPatchedRuntime(destination), destination);
+  assert.equal(readFileSync(join(source, sdkTarget), 'utf8'), before);
+  const verified = readFileSync(join(destination, sdkTarget), 'utf8');
+  writeFileSync(join(destination, sdkTarget), verified + '\n');
+  assert.throws(() => verifyPatchedRuntime(destination), /stdin patch/);
+  writeFileSync(join(destination, sdkTarget), verified);
+  writeFileSync(join(destination, '.mediquest-original-codex-sdk.js'), 'modified');
+  assert.throws(() => verifyPatchedRuntime(destination), /SDK source hash/);
+  put('node_modules/@openai/codex-sdk/package.json', JSON.stringify({ name: '@openai/codex-sdk', version: '0.138.0' }));
+  assert.throws(() => prepareRuntime(source, join(root, 'bad')), /0.137.0/);
+  assert.equal(existsSync(join(root, 'bad')), false);
+});
