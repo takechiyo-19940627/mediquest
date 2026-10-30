@@ -1,0 +1,13 @@
+{
+  "name": "mediquest-process-check-fixtures",
+  "private": true,
+  "version": "1.0.0",
+  "description": "Pinned upstream sources for process regression tests; never launched as providers.",
+  "devDependencies": {
+    "@openai/codex-sdk": "0.137.0",
+    "takt": "0.49.0"
+  },
+  "overrides": {
+    "@openai/codex-sdk": "0.137.0"
+  }
+}

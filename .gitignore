@@ -21,3 +21,6 @@
 /.takt/quality/
 /.takt/preparation/
 /.takt/runtime/
+
+# Pinned dependencies used only by process regression tests
+/scripts/process-checks/node_modules/
