@@ -105,7 +105,7 @@ update study_items set excluded_reason='invalidated',excluded_at=8 where id=2;`)
     expect(snapshot()).toEqual(migrated);
     expect(
       c.client.prepare('select count(*) n from __drizzle_migrations').get(),
-    ).toEqual({ n: 10 });
+    ).toEqual({ n: 11 });
     expect(c.client.pragma('foreign_key_check')).toEqual([]);
     expect(c.client.pragma('foreign_keys', { simple: true })).toBe(1);
     const column = (

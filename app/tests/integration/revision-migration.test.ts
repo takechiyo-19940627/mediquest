@@ -175,7 +175,7 @@ it('backfills once while retaining all data, adopted order, requests, history an
     ).toEqual(candidates);
     expect(
       f.c.client.prepare('select count(*) n from __drizzle_migrations').get(),
-    ).toEqual({ n: 10 });
+    ).toEqual({ n: 11 });
     expect(f.c.client.pragma('foreign_key_check')).toEqual([]);
     for (const table of ['question_sets', 'question_versions', 'set_items'])
       expect(

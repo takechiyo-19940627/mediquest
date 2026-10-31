@@ -177,7 +177,9 @@ export function publicationState(db: DatabaseReader, set: SetRow) {
               generationStatus,
               version.generationRunId,
               version.derivedFromVersionId,
-              version.manualCreatedBy,
+              ...(version.manualCreatedBy === null
+                ? []
+                : [version.manualCreatedBy]),
             ]),
         ];
   const publishFingerprint = createHash('sha256')
