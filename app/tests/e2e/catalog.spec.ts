@@ -53,7 +53,9 @@ test('real catalog pagination, direct detail, privacy, themes and keyboard navig
   await expect(
     page.getByText('現在出題可能な問題はありません', { exact: true }),
   ).toBeVisible();
-  await expect(page.getByText('演習画面は準備中です')).toBeVisible();
+  await expect(
+    page.getByRole('button', { name: '演習を始める' }),
+  ).toBeDisabled();
   await page.reload();
   await expect(
     page.getByText('現在出題可能な問題はありません', { exact: true }),
