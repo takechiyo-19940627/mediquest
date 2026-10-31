@@ -55,25 +55,18 @@ test('fresh CLI setup and backup/restore restart preserve browser progress', asy
   }
   async function start(db: string) {
     let output = '';
-    child = spawn(
-      process.execPath,
-      ['.nuxt/admin-e2e-output/server/index.mjs'],
-      {
-        env: {
-          ...process.env,
-          NITRO_HOST: '127.0.0.1',
-          NITRO_PORT: '3310',
-          MEDIQUEST_DB_PATH: db,
-          MEDIQUEST_LOCAL_MODE: 'true',
-          MEDIQUEST_LOCAL_ORIGIN: origin,
-          MEDIQUEST_GENERATION_ENABLED: 'true',
-          ANTHROPIC_API_KEY: 'TEST_ONLY_KEY',
-          MEDIQUEST_ANTHROPIC_MODEL: 'test-model',
-          TEST_GENERATION_EVENTS: join(directory, 'events'),
-        },
-        stdio: ['ignore', 'pipe', 'pipe'],
+    child = spawn(process.execPath, ['.output/server/index.mjs'], {
+      env: {
+        ...process.env,
+        NITRO_HOST: '127.0.0.1',
+        NITRO_PORT: '3310',
+        MEDIQUEST_DB_PATH: db,
+        MEDIQUEST_LOCAL_MODE: 'true',
+        MEDIQUEST_LOCAL_ORIGIN: origin,
+        MEDIQUEST_GENERATION_ENABLED: 'false',
       },
-    );
+      stdio: ['ignore', 'pipe', 'pipe'],
+    });
     child.stdout?.on('data', (data) => (output += String(data)));
     child.stderr?.on('data', (data) => (output += String(data)));
     await expect
@@ -93,54 +86,27 @@ test('fresh CLI setup and backup/restore restart preserve browser progress', asy
       cli('seed', original);
     }
     await start(original);
-    const sourceResponse = await client.post('/api/admin/sources', {
+    const response = await client.post('/api/admin/past-exams', {
       headers: { 'Idempotency-Key': randomUUID() },
-      data: { title: '復元確認教材', body: '教材の根拠です。' },
-    });
-    expect(sourceResponse.status()).toBe(201);
-    const source = await sourceResponse.json();
-    const generation = await client.post(
-      `/api/admin/sources/${source.id}/generations`,
-      {
-        headers: { 'Idempotency-Key': randomUUID() },
-        data: { title: '復元確認セット', requestedCount: 2 },
-      },
-    );
-    expect(generation.status()).toBe(201);
-    const { setId } = await generation.json();
-    const detail = await (await client.get(`/api/admin/sets/${setId}`)).json();
-    for (const version of detail.candidates) {
-      const response = await client.put(
-        `/api/admin/sets/${setId}/versions/${version.id}/review`,
-        {
-          data: {
-            fingerprint: version.fingerprint,
-            confirmed: true,
-            acknowledgeQuoteMismatch: true,
-          },
-        },
-      );
-      expect(response.status()).toBe(200);
-    }
-    const adoption = await client.put(`/api/admin/sets/${setId}/items`, {
       data: {
-        expectedRevision: detail.revision,
-        versionIds: detail.candidates.map((v: { id: number }) => v.id),
+        examName: '復元確認試験',
+        year: '2025',
+        subject: '情報',
+        confirmed: true,
+        questions: [1, 2].map((n) => ({
+          questionNumber: String(n),
+          body: `問題${n}`,
+          choices: [
+            { id: 'a', label: '選択肢A' },
+            { id: 'b', label: '選択肢B' },
+          ],
+          answerIds: ['a'],
+          explanation: '解説',
+        })),
       },
     });
-    expect(adoption.status()).toBe(200);
-    const ready = await (await client.get(`/api/admin/sets/${setId}`)).json();
-    expect(
-      (
-        await client.post(`/api/admin/sets/${setId}/publish`, {
-          data: {
-            expectedRevision: ready.revision,
-            publishFingerprint: ready.publishFingerprint,
-            confirmed: true,
-          },
-        })
-      ).status(),
-    ).toBe(201);
+    expect(response.status()).toBe(201);
+    const { setId } = await response.json();
     await page.goto(`${origin}/sets/${setId}`);
     await page
       .getByRole('button', { name: '演習を始める', exact: true })

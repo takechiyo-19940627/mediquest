@@ -1,3 +1,4 @@
+import { rejectPastExamMutation } from '../past-exams/service';
 import { and, eq } from 'drizzle-orm';
 import type { Connection } from '../../db/connection';
 import { questionSets, setItems } from '../../db/schema';
@@ -20,6 +21,7 @@ export function replaceItems(
   return connection.db.transaction(
     (tx) => {
       requireAdministrator({ db: tx });
+      rejectPastExamMutation(tx, id);
       const input = itemsInput(value);
       const set = tx
         .select()
@@ -61,6 +63,7 @@ export function publishSet(connection: Connection, id: number, value: unknown) {
   return connection.db.transaction(
     (tx) => {
       const user = requireAdministrator({ db: tx });
+      rejectPastExamMutation(tx, id);
       const input = publishInput(value);
       const set = tx
         .select()
@@ -171,6 +174,7 @@ export function archiveSet(connection: Connection, id: number, value: unknown) {
   return connection.db.transaction(
     (tx) => {
       requireAdministrator({ db: tx });
+      rejectPastExamMutation(tx, id);
       archiveInput(value);
       const set = tx
         .select()

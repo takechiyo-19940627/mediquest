@@ -1,3 +1,5 @@
+import { isPastExam } from '../past-exams/service';
+import { pastQuestion } from '../past-exams/input';
 import {
   answerInput,
   gradeAnswer,
@@ -10,6 +12,7 @@ import { ReviewError } from '../review/input';
 import { and, eq, isNull } from 'drizzle-orm';
 import type { Connection } from '../../db/connection';
 import {
+  pastExamQuestions,
   questionSets,
   questionVersions,
   questions,
@@ -111,6 +114,45 @@ function publishedSet(db: Reader, setId: number) {
     return null;
   return set;
 }
+// Past-paper edits archive the old edition but do not withdraw its saved
+// attempts. A chain ending in a currently published past paper permits review
+// of those original fixed versions. An explicitly withdrawn chain does not.
+function reviewableSet(db: Reader, setId: number) {
+  const published = publishedSet(db, setId);
+  if (published) return published;
+  const original = db
+    .select()
+    .from(questionSets)
+    .where(eq(questionSets.id, setId))
+    .get();
+  if (
+    !original ||
+    original.status !== 'archived' ||
+    original.publishedAt === null ||
+    original.publishedBy === null ||
+    !isPastExam(db, setId)
+  )
+    return null;
+  let current = original;
+  const seen = new Set<number>([current.id]);
+  while (true) {
+    const successor = db
+      .select()
+      .from(questionSets)
+      .where(eq(questionSets.supersedesSetId, current.id))
+      .all()
+      .find(
+        (candidate) =>
+          candidate.publishedAt !== null && candidate.publishedBy !== null,
+      );
+    if (!successor || seen.has(successor.id) || !isPastExam(db, successor.id))
+      return null;
+    if (successor.status === 'published') return original;
+    if (successor.status !== 'archived') return null;
+    seen.add(successor.id);
+    current = successor;
+  }
+}
 // Shared start-time check for one fixed version of a set. Integrity failures
 // (wrong set/source, broken format, duplicate logical question) are conflicts;
 // stopped, invalidated, unconfirmed or failed-run versions are not obtainable.
@@ -137,21 +179,36 @@ function obtainable(
   )
     return false;
   try {
-    validateGeneration(
-      {
-        questions: [
-          {
-            body: version.body,
-            choices: version.choicesJson,
-            answerIds: version.answerIdsJson,
-            explanation: version.explanation,
-            quote: version.quote,
-          },
-        ],
-      },
-      1,
-      source.body,
-    );
+    const past = db
+      .select()
+      .from(pastExamQuestions)
+      .where(eq(pastExamQuestions.questionVersionId, version.id))
+      .get();
+    if (isPastExam(db, set.id)) {
+      if (!past) throw new StudyError('conflict');
+      pastQuestion({
+        questionNumber: past.questionNumber,
+        body: version.body,
+        choices: version.choicesJson,
+        answerIds: version.answerIdsJson,
+        explanation: version.explanation,
+      });
+    } else
+      validateGeneration(
+        {
+          questions: [
+            {
+              body: version.body,
+              choices: version.choicesJson,
+              answerIds: version.answerIdsJson,
+              explanation: version.explanation,
+              quote: version.quote,
+            },
+          ],
+        },
+        1,
+        source.body,
+      );
   } catch {
     throw new StudyError('conflict');
   }
@@ -204,7 +261,8 @@ export function startSession(
       const set = publishedSet(tx, input.setId);
       if (!set) throw new StudyError('missing');
       const selected = selectedItems(tx, set.id);
-      if (selected.length > 10) throw new StudyError('conflict');
+      if (selected.length > (isPastExam(tx, set.id) ? 100 : 10))
+        throw new StudyError('conflict');
       const seen = new Set<number>();
       const available = selected.filter((item) =>
         obtainable(tx, set, item.questionVersionId, seen),
@@ -253,7 +311,7 @@ export function startReviewSession(
         return { session: summary(tx, prior), replayed: true };
       }
       if (parent.status !== 'completed') throw new StudyError('conflict');
-      const set = publishedSet(tx, parent.setId);
+      const set = reviewableSet(tx, parent.setId);
       if (!set) throw new StudyError('conflict');
       const published = new Set(
         selectedItems(tx, set.id).map((item) => item.questionVersionId),
@@ -300,6 +358,7 @@ function itemRow(db: Reader, sessionId: number, itemId: number) {
     .select({
       item: studyItems,
       version: questionVersions,
+      questionNumber: pastExamQuestions.questionNumber,
       questionStatus: questions.status,
     })
     .from(studyItems)
@@ -308,6 +367,10 @@ function itemRow(db: Reader, sessionId: number, itemId: number) {
       eq(studyItems.questionVersionId, questionVersions.id),
     )
     .innerJoin(questions, eq(questionVersions.questionId, questions.id))
+    .leftJoin(
+      pastExamQuestions,
+      eq(pastExamQuestions.questionVersionId, questionVersions.id),
+    )
     .where(and(eq(studyItems.sessionId, sessionId), eq(studyItems.id, itemId)))
     .get();
   if (!row) throw new StudyError('missing');
@@ -333,6 +396,9 @@ function itemDto(row: ReturnType<typeof itemRow>) {
   const base = {
     id: row.item.id,
     position: row.item.position,
+    ...(row.questionNumber === null
+      ? {}
+      : { questionNumber: row.questionNumber }),
     body: row.version.body,
     choices: row.version.choicesJson.map((choice) => ({
       id: choice.id,
