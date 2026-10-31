@@ -13,10 +13,26 @@ Node **24.15.0** / npm **11.12.1** を使用します。nodenv利用時はこの
 ```sh
 npm ci
 npm exec -- playwright install chromium
-npm run dev
 ```
 
-開発サーバーは127.0.0.1に限定します。インストール時にはNuxtの型生成が実行されます。
+`npm run dev` だけでは、管理・学習APIに必要なローカル設定とDBは用意されません。初回の確認では以下を同じターミナルで実行します。確認用の新規DBを作り、既存データを上書きしません。
+
+```sh
+local_data_dir=$(mktemp -d /private/tmp/mediquest-local.XXXXXX)
+export MEDIQUEST_DB_PATH="$local_data_dir/mediquest.sqlite"
+export MEDIQUEST_LOCAL_MODE=true
+export MEDIQUEST_LOCAL_ORIGIN=http://127.0.0.1:3300
+printf '確認用DB: %s\n' "$MEDIQUEST_DB_PATH"
+npm run db:migrate
+npm run db:seed
+npm run dev -- --port 3300
+```
+
+[教材管理](http://127.0.0.1:3300/admin/sources)を開きます。既存DBを使う場合は `MEDIQUEST_DB_PATH` にその絶対パスを指定し、移行前にバックアップしてください。上の一時ディレクトリは確認用です。継続利用するDBはリポジトリ外の保持できる場所へ用意します。
+
+管理者ログイン画面はありません。明示したローカルモードでDBの固定管理者ID 1を使います。403なら、`MEDIQUEST_LOCAL_MODE=true`、DBへのmigrate/seed、`MEDIQUEST_LOCAL_ORIGIN` とブラウザのURLが一致しているかを確認してください。`localhost` と `127.0.0.1` は別のHostとして扱います。Nuxtが使用中ポートを避けて別ポートへ移った場合も設定と一致しなくなります。未使用ポートを明示し、originも同じ値にしてください。
+
+起動し直すときは自分がMediquestを起動したターミナルでCtrl+Cを使います。他のClaude/Codexや別アプリを終了しません。開発サーバーは127.0.0.1に限定します。インストール時にはNuxtの型生成が実行されます。実AI生成の設定は下記の生成API節を参照してください。
 
 ## 検証
 

@@ -34,6 +34,12 @@ AI生成を手動確認する場合は、自分の利用可能なAnthropicモデ
 
 初回はloopback限定です。固定ローカル管理者（ID 1）を使用し、ログイン・利用者切替・外部公開はありません。
 
+## 管理画面が403になる場合
+
+管理者用ログイン画面はありません。`npm run dev` だけでは管理モード・DBは用意されません。上記の `MEDIQUEST_LOCAL_MODE=true`、`MEDIQUEST_DB_PATH`、DBのmigrate/seedが必要です。起動時の `MEDIQUEST_LOCAL_ORIGIN` とブラウザのscheme・hostname・portを一致させてください。`localhost` と `127.0.0.1`、3000と3001は同じ扱いになりません。使用中ポートを避けてNuxtが別ポートで起動した場合も403になります。
+
+設定を変えたら、自分が起動したMediquestのターミナルでCtrl+Cを押して再起動します。他のClaude/Codexや別アプリを終了しないでください。既存DBを利用する場合はその絶対パスを選びます。既存learnerをadminへ昇格させる操作は行いません。
+
 ## 一連の確認手順（A01）
 
 自動試験はテスト専用ビルドの固定AIを使います。通常起動のアプリには固定AIを提供しないため、以下を手動で最初から通すには上記の実AI設定が必要です。実AIを設定しない場合は生成を伴う項目を「保留」とし、既存の専用テストデータで確認できた範囲だけ記録してください。
@@ -152,14 +158,14 @@ npm run start
 
 | 確認対象 | 記録 |
 |---|---|
-| アプリ検証SHA・最終PR | `68aa11af244919f44a8cf2f2a6a23ef1595936a1`、[PR #86](https://github.com/takechiyo-19940627/mediquest/pull/86)。このSHA以降の最終記録追記はdocsのみ。最新headも下記CIで再検証する |
+| アプリ検証SHA・最終PR | `68aa11af244919f44a8cf2f2a6a23ef1595936a1`、[PR #86](https://github.com/takechiyo-19940627/mediquest/pull/86)。このSHA以降は文書（docs/とapp/README.md）の追記のみ。最新headも下記CIで再検証する |
 | 全7ゲート実行日時・ログ | 2026-10-31 19:10〜19:16 JST、`bash scripts/app-command.sh quality` 終了コード0。format / lint / typecheck / unit / integration / E2E / production buildすべて成功。ローカルログ `/private/tmp/issue77-quality.log`、保存用CIログはPRのChecksから参照 |
 | unit / integration / production・admin・preview E2E件数 | **108 / 238 / 50・48・4、計448件成功** |
 | アクセシビリティ・画面証拠 | 14画面・状態 × 2テーマ × 2幅 = **56 axe検査、違反0**。対応PNG56枚。ルール除外なし。主要なPC/モバイル画像を独立目視。自動検査だけでWCAG全体やスクリーンリーダー操作の適合を保証しない |
 | 起動・移行・backup/restore/restart | E10のPC/mobile各1件で新規CLI migrate/seedの再実行→起動→演習回答→所有サーバー停止→実CLIバックアップ/別パス復元→再起動→答案一致・中断再開・履歴を確認。E11で上書き拒否・元データ不変等、E12で旧0008 DBの移行と固定版/答案/FK保持を確認。旧版CLI→新版移行→再起動を一本で通す試験は未実施で、これら個別試験の組合せ。ユーザーの実DBは操作していない |
 | 独立レビュー | 実装とは別のレビュー担当がコード、CLI所有範囲、画像、56件のaxe結果、手順、品質条件を確認。最新headの承認記録と指摘解消は[PR #86のConversation](https://github.com/takechiyo-19940627/mediquest/pull/86)に保存 |
 | 最新headのGitHub CI | [PR #86 Checks](https://github.com/takechiyo-19940627/mediquest/pull/86/checks)。最新headのApp checks・process-checks全SUCCESS、独立承認、未解決指摘なしを確認してからマージする。`App checks` の `browser-evidence` artifactに画像とaxe JSONを14日保存 |
-| 依存Issueの完了照合 | #67 / #71 / #72 / #73 / #74 / #75 / #76 はすべて対応PRマージ・CLOSEDを確認。#77 / #82 / #85はPR #86で最終記録・依存更新・コントラスト修正をまとめる。旧TAKT承認連携 #10 は方針変更によりnot_plannedで終了し、実装完了とは区別 |
+| 依存Issueの完了照合 | #67 / #71 / #72 / #73 / #74 / #75 / #76 はすべて対応PRマージ・CLOSEDを確認。#77 / #82 / #85 / #87はPR #86で最終記録・依存更新・コントラスト修正・初回起動の403対処をまとめる。旧TAKT承認連携 #10 は方針変更によりnot_plannedで終了し、実装完了とは区別 |
 | 残る未検証・制約 | 上記制約節を確認。実AI課金・生成品質、ユーザー実DB、ユーザー受入判断は未実施。依存監査はhigh/critical 0、moderate 42・low 2を残す。固定provider/keyのテストmarkerとforge/listhen依存は本番生成物に含まれないことを確認 |
 | ユーザー最終判断 | 未実施・実施日: ・備考: |
 
