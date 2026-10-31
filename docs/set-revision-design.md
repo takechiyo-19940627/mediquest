@@ -16,7 +16,7 @@ Issue #57 の設計成果。基準は main `6235e379`。**この資料の追加�
 | 公開 | 下書き単体の公開と単体archive | 改訂元との同時更新を追加 |
 | 学習履歴 | 開始時の版・順序、回答時正誤を保持 | 置換・再採点せず回帰検証 |
 
-対応箇所は `app/server/db/schema.ts`、`services/review/service.ts`、`services/publication/service.ts`（servicesは `app/server/` 配下）。既存の公開版編集拒否、管理者境界、停止・不備除外を解除しない。TAKT workerのdocs保護は変更せず、監督側の設計作業として扱う。
+対応箇所は `app/server/db/schema.ts`、`services/review/service.ts`、`services/publication/service.ts`（servicesは `app/server/` 配下）。既存の公開版編集拒否、管理者境界、停止・不備除外を解除しない。設計変更は実装と対応づけて記録し、独立レビューを受ける。
 
 ## 最小データ案（実装判断）
 

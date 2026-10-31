@@ -1,3 +1,5 @@
+> **旧運用資料（2026-10-31）**: 現在はCodexによる直接開発に移行済みです。この文書のTAKT実行・再試行・定期監督の手順は使用しません。現行方針は [開発プロセス](../docs/development-process.md) を参照してください。設定と履歴は保全しています。
+
 # Mediquest の TAKT 設定
 
 TAKT **0.49.0** に対応した実用アプリ用の workflow。限定事前許可の範囲と検証方法は [開発事前許可](../docs/takt-preauthorization.md) を参照。
