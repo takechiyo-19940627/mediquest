@@ -5,6 +5,7 @@ export default defineConfig({
   globalSetup: './tests/e2e/global-setup.ts',
   workers: 1,
   testDir: './tests/e2e',
+  outputDir: './test-results/production',
   fullyParallel: false,
   forbidOnly: Boolean(process.env.CI),
   retries: 0,

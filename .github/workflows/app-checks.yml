@@ -23,8 +23,9 @@ jobs:
         working-directory: app
       - run: node scripts/check-app.mjs
       - uses: actions/upload-artifact@v4
-        if: failure()
+        if: always()
         with:
-          name: browser-failure
+          name: browser-evidence
           path: app/test-results
           if-no-files-found: ignore
+          retention-days: 14

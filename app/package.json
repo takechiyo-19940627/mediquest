@@ -26,25 +26,26 @@
   },
   "dependencies": {
     "@nuxt/ui": "4.12.0",
-    "nuxt": "4.6.2",
+    "better-sqlite3": "13.0.3",
+    "drizzle-orm": "0.45.4",
+    "nuxt": "4.6.3",
     "tailwindcss": "^4.0.0",
     "vue": "^3.5.0",
-    "vue-router": "5.4.0",
-    "drizzle-orm": "0.45.4",
-    "better-sqlite3": "13.0.3"
+    "vue-router": "5.4.0"
   },
   "devDependencies": {
+    "@axe-core/playwright": "4.14.0",
     "@nuxt/eslint": "1.17.0",
     "@nuxt/test-utils": "4.3.4",
     "@playwright/test": "1.64.1",
+    "@types/better-sqlite3": "9.6.0",
     "@types/node": "^24.0.0",
+    "drizzle-kit": "0.31.11",
     "eslint": "10.13.0",
     "prettier": "^3.0.0",
     "typescript": "^5.0.0",
     "vitest": "5.0.5",
-    "vue-tsc": "^3.0.0",
-    "drizzle-kit": "0.31.11",
-    "@types/better-sqlite3": "9.6.0"
+    "vue-tsc": "^3.0.0"
   },
   "packageManager": "npm@11.12.1"
 }
