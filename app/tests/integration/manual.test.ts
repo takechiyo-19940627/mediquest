@@ -1,4 +1,8 @@
 import {
+  getPublishedSet,
+  listPublishedSets,
+} from '../../server/services/learning-catalog/service';
+import {
   replaceItems,
   publishSet,
 } from '../../server/services/publication/service';
@@ -205,6 +209,15 @@ it('publishes manual questions, grades multiple answers, and preserves history t
       }),
     ).toThrow('conflict');
     publish(setId);
+    expect(getPublishedSet(f.c, setId)).toMatchObject({
+      availableQuestionCount: 1,
+      canStart: true,
+    });
+    expect(
+      listPublishedSets(f.c, { limit: 20, before: undefined }).items,
+    ).toEqual([
+      expect.objectContaining({ id: setId, availableQuestionCount: 1 }),
+    ]);
     const { session } = startSession(f.c, { setId }, randomUUID());
     answerStudyItem(f.c, session.id, session.items[0]!.id, {
       selectedIds: ['a', 'b'],
@@ -229,9 +242,34 @@ it('publishes manual questions, grades multiple answers, and preserves history t
       quote: q.quote,
     });
     publish(draft.id);
+    expect(getPublishedSet(f.c, draft.id)).toMatchObject({
+      availableQuestionCount: 1,
+      canStart: true,
+    });
     expect(getStudyItem(f.c, session.id, session.items[0]!.id)).toEqual(
       history,
     );
+    f.c.client
+      .prepare("update questions set status='stopped' where id=?")
+      .run(q.questionId);
+    expect(getPublishedSet(f.c, draft.id)).toMatchObject({
+      availableQuestionCount: 0,
+      canStart: false,
+    });
+    f.c.client
+      .prepare("update questions set status='active' where id=?")
+      .run(q.questionId);
+    f.c.client.exec(
+      "insert into sources(id,title,body,created_by,created_at) values(999,'別教材','別本文',1,1)",
+    );
+    f.c.client
+      .prepare('update questions set source_id=999 where id=?')
+      .run(q.questionId);
+    expect(getPublishedSet(f.c, draft.id)).toMatchObject({
+      availableQuestionCount: 0,
+      canStart: false,
+    });
+
     expect(
       f.c.client.prepare('select count(*) as n from generation_runs').get(),
     ).toEqual({ n: 0 });
