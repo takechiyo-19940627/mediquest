@@ -4,7 +4,7 @@ import { withE2eDatabase } from './e2e-database.ts';
 const exitCode = await withE2eDatabase(async (env) => {
   const child = spawn(
     process.execPath,
-    ['node_modules/playwright/cli.js', 'test'],
+    ['node_modules/playwright/cli.js', 'test', ...process.argv.slice(2)],
     { env, stdio: 'inherit' },
   );
   const interrupt = () => child.kill('SIGINT');
