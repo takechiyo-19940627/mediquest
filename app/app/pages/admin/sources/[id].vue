@@ -55,6 +55,15 @@ watch(() => route.params.id, load);
         ><h2 class="mb-3 text-lg font-semibold">教材本文</h2>
         <p class="whitespace-pre-wrap break-words">{{ source.body }}</p></UCard
       >
+      <UCard>
+        <h2 class="text-lg font-semibold">自分で問題を作る</h2>
+        <p class="my-3">
+          問題文・選択肢・正答・解説を手入力できます。AIの設定や接続は不要です。
+        </p>
+        <UButton :to="`/admin/manual-sets/new?sourceId=${source.id}`"
+          >手動で問題を登録する</UButton
+        >
+      </UCard>
       <AdminGenerationPanel
         :key="source.id"
         :source-id="source.id"

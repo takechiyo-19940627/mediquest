@@ -72,7 +72,7 @@ test('real study, explicit next, skip, resume, fixed answers and both themes', a
     page.getByRole('heading', { name: '問題1', exact: true }),
   ).toBeVisible();
   await expect(
-    page.getByRole('heading', { name: 'AI解説', exact: true }),
+    page.getByRole('heading', { name: '解説', exact: true }),
   ).toBeVisible();
   await expect(page.getByRole('radio').first()).toBeDisabled();
   await page.screenshot({

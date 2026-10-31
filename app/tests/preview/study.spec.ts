@@ -52,7 +52,7 @@ for (const theme of ['ライト', 'ダーク']) {
     ).toBeVisible();
     await expect(page.getByRole('radio').first()).toBeDisabled();
     await expect(
-      page.getByRole('heading', { name: 'AI解説（デモ）' }),
+      page.getByRole('heading', { name: '解説（デモ）' }),
     ).toBeVisible();
     await page.screenshot({
       path: testInfo.outputPath(`${theme}-feedback.png`),

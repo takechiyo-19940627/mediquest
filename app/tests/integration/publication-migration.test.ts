@@ -73,7 +73,7 @@ it('migrates the preceding baseline twice while preserving existing reviewed can
         rows.map((row) => ({
           ...(row as Record<string, unknown>),
           ...(tables[index] === 'question_versions'
-            ? { derived_from_version_id: null }
+            ? { derived_from_version_id: null, manual_created_by: null }
             : {}),
           ...(tables[index] === 'question_sets'
             ? { supersedes_set_id: null, supersedes_revision: null }

@@ -94,7 +94,7 @@ update study_items set excluded_reason='invalidated',excluded_at=8 where id=2;`)
         rows.map((row) => ({
           ...(row as Record<string, unknown>),
           ...(tables[index] === 'question_versions'
-            ? { derived_from_version_id: null }
+            ? { derived_from_version_id: null, manual_created_by: null }
             : {}),
           ...(tables[index] === 'question_sets'
             ? { supersedes_set_id: null, supersedes_revision: null }
@@ -107,7 +107,7 @@ update study_items set excluded_reason='invalidated',excluded_at=8 where id=2;`)
     // 0007 baseline → full set applies 0008 (Issue #44) as well.
     expect(
       c.client.prepare('select count(*) n from __drizzle_migrations').get(),
-    ).toEqual({ n: 10 });
+    ).toEqual({ n: 11 });
     expect(c.client.pragma('foreign_key_check')).toEqual([]);
     expect(c.client.pragma('foreign_keys', { simple: true })).toBe(1);
     const column = (

@@ -377,7 +377,7 @@ onBeforeUnmount(() => {
         採用する問題・順序は未保存です。保存または取り消してから他の操作を行ってください。
       </p>
       <p v-if="!detail.candidates.length">
-        候補がまだありません。生成受付の状態を教材画面で確認してください。
+        候補がまだありません。教材画面で問題を作成するか、生成受付の状態を確認してください。
       </p>
       <section
         v-for="(candidate, index) in detail.candidates"
@@ -390,6 +390,7 @@ onBeforeUnmount(() => {
               候補 {{ index + 1 }} · 問題 #{{ candidate.questionId }} / 版
               {{ candidate.versionNo }}
             </h2>
+            <p v-if="candidate.manualCreatedBy != null">手動登録した問題</p>
             <p>
               {{
                 candidate.reviewedAt !== null && candidate.reviewedBy !== null

@@ -101,7 +101,7 @@ test('saved results and three-answer feedback remain fixed after revision', asyn
     ),
   ).toBeVisible();
   await expect(
-    page.getByRole('heading', { name: 'AI解説', exact: true }),
+    page.getByRole('heading', { name: '解説', exact: true }),
   ).toHaveCount(0);
   await expect(
     page.getByRole('button', { name: '誤答を復習する' }),
@@ -130,7 +130,7 @@ test('review response loss replays one fixed-version session after archive', asy
     page.getByRole('heading', { name: '問題1', exact: true }),
   ).toBeVisible();
   await expect(
-    page.getByRole('heading', { name: 'AI解説', exact: true }),
+    page.getByRole('heading', { name: '解説', exact: true }),
   ).toHaveCount(0);
   expect(reviewCount()).toBe(1);
   await page.getByRole('radio', { name: '選択肢A' }).click();
@@ -164,7 +164,7 @@ test('stopped wrong answers cannot create reviews and invalidated results retain
     page.getByText('不備確定のため集計から除外', { exact: true }),
   ).toHaveCount(3);
   await expect(
-    page.getByRole('heading', { name: 'AI解説', exact: true }),
+    page.getByRole('heading', { name: '解説', exact: true }),
   ).toHaveCount(0);
   await page.goto(`/sessions/${f.interrupted}/result`);
   await expect(page.getByText('集計対象なし', { exact: true })).toBeVisible();
@@ -245,7 +245,7 @@ test('failed refresh retries the first page and replaces stale data; result 403 
   expect(cursors).toEqual([null, null]);
   await page.goto(`/sessions/${f.completed}/result`);
   await expect(
-    page.getByRole('heading', { name: 'AI解説', exact: true }),
+    page.getByRole('heading', { name: '解説', exact: true }),
   ).toHaveCount(3);
   await page.route(`**/api/sessions/${f.completed}`, (route) =>
     route.fulfill({ status: 403, body: '{}' }),

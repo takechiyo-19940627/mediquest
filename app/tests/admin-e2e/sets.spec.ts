@@ -581,7 +581,7 @@ test('displays the empty and loading set list without private SSR data', async (
   release();
   await expect(
     page.getByText(
-      'セットはまだありません。教材の詳細から問題を生成してください。',
+      'セットはまだありません。教材の詳細からAI生成または手動登録で問題を作成してください。',
       { exact: true },
     ),
   ).toBeVisible();

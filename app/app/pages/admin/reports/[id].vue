@@ -131,7 +131,7 @@ onBeforeUnmount(() => {
               }}
             </li>
           </ul>
-          <h4 class="font-semibold">AI解説</h4>
+          <h4 class="font-semibold">解説</h4>
           <p class="whitespace-pre-wrap">{{ report.version.explanation }}</p>
           <h4 class="font-semibold">教材からの引用</h4>
           <blockquote
