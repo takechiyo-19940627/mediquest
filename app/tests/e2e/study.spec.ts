@@ -279,3 +279,43 @@ test('publication withdrawal and item read failure offer safe recovery', async (
   ).toBeVisible();
   expect(counts().sessions).toBe(1);
 });
+
+test('pending skip disables old choices until the next question is ready', async ({
+  page,
+}) => {
+  await start(page);
+  let release!: () => void;
+  const gate = new Promise<void>((resolve) => {
+    release = resolve;
+  });
+  await page.route('**/skip', async (route) => {
+    const response = await route.fetch();
+    await gate;
+    await route.fulfill({ response });
+  });
+  try {
+    await page
+      .getByRole('button', { name: 'この問題をスキップ', exact: true })
+      .click();
+    await expect(
+      page.getByRole('heading', { name: '問題1', exact: true }),
+    ).toBeVisible();
+    await expect(
+      page.getByRole('radio', { name: '選択肢A', exact: true }),
+    ).toBeDisabled();
+    await expect(
+      page.getByRole('button', { name: '回答する', exact: true }),
+    ).toBeDisabled();
+  } finally {
+    release();
+  }
+  await expect(
+    page.getByRole('heading', { name: '問題2', exact: true }),
+  ).toBeVisible();
+  await page.getByRole('radio', { name: '選択肢A', exact: true }).check();
+  await page.getByRole('button', { name: '回答する', exact: true }).click();
+  await expect(
+    page.getByRole('button', { name: '次へ', exact: true }),
+  ).toBeVisible();
+  expect(counts()).toEqual({ sessions: 1, answered: 1 });
+});

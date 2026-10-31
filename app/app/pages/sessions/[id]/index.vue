@@ -220,6 +220,7 @@ onBeforeUnmount(() => {
         <StudyQuestion
           :question="question"
           :answer="answer"
+          :busy="busy"
           :save-message="saveMessage"
           @select="
             (id) => {

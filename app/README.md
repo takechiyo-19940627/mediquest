@@ -1,6 +1,10 @@
-# Mediquest アプリ基盤
+# Mediquest ローカルWebアプリ
 
-Nuxt / Vue / TypeScript と Nuxt UI を使った日本語の学習ホームです。公開セットの実API一覧・詳細、教材がない空状態、ティール基調のライト・ダーク・OS連動テーマ、公開稼働確認APIを含みます。SQLiteのDB基盤を含みます。ローカル管理者向け教材・生成・確認・採用・明示公開APIを含みます。本人限定の演習開始・回答確定・採点・未回答スキップ・履歴一覧・誤答復習開始APIも含みます。管理UI・演習UI・履歴UI・外部認証・実AI検証は未対応です。演習画面のデザイン基準は今後合意します。
+Nuxt / Vue / TypeScript・Nuxt UI・SQLiteを使う、本人のPC向け日本語学習アプリです。教材の登録・生成・確認編集・採用公開、演習・回答保存・中断再開、結果・履歴・誤答復習、不備報告・管理判断、改訂公開を画面から操作できます。
+
+初回の範囲は [初回リリース計画](../docs/first-release-plan.md)、ユーザー確認の手順と結果記入欄は [受け入れテスト項目書](../docs/acceptance-test-checklist.md) を参照してください。実AIによる生成品質と課金の確認、ユーザー自身の受入判断は自動試験とは別です。
+
+開発はCodexが直接行います。TAKTによる開発は終了し、定期実行は再開していません。以下のIssue別API節は各実装段階の契約を説明します。「そのIssueの対象外」は現在のアプリ全体の未実装を意味しません。現在の画面操作は末尾のUI各節を参照してください。
 
 ## 開発
 
@@ -9,10 +13,26 @@ Node **24.15.0** / npm **11.12.1** を使用します。nodenv利用時はこの
 ```sh
 npm ci
 npm exec -- playwright install chromium
-npm run dev
 ```
 
-開発サーバーは127.0.0.1に限定します。インストール時にはNuxtの型生成が実行されます。
+`npm run dev` だけでは、管理・学習APIに必要なローカル設定とDBは用意されません。初回の確認では以下を同じターミナルで実行します。確認用の新規DBを作り、既存データを上書きしません。
+
+```sh
+local_data_dir=$(mktemp -d /private/tmp/mediquest-local.XXXXXX)
+export MEDIQUEST_DB_PATH="$local_data_dir/mediquest.sqlite"
+export MEDIQUEST_LOCAL_MODE=true
+export MEDIQUEST_LOCAL_ORIGIN=http://127.0.0.1:3300
+printf '確認用DB: %s\n' "$MEDIQUEST_DB_PATH"
+npm run db:migrate
+npm run db:seed
+npm run dev -- --port 3300
+```
+
+[教材管理](http://127.0.0.1:3300/admin/sources)を開きます。既存DBを使う場合は `MEDIQUEST_DB_PATH` にその絶対パスを指定し、移行前にバックアップしてください。上の一時ディレクトリは確認用です。継続利用するDBはリポジトリ外の保持できる場所へ用意します。
+
+管理者ログイン画面はありません。明示したローカルモードでDBの固定管理者ID 1を使います。403なら、`MEDIQUEST_LOCAL_MODE=true`、DBへのmigrate/seed、`MEDIQUEST_LOCAL_ORIGIN` とブラウザのURLが一致しているかを確認してください。`localhost` と `127.0.0.1` は別のHostとして扱います。Nuxtが使用中ポートを避けて別ポートへ移った場合も設定と一致しなくなります。未使用ポートを明示し、originも同じ値にしてください。
+
+起動し直すときは自分がMediquestを起動したターミナルでCtrl+Cを使います。他のClaude/Codexや別アプリを終了しません。開発サーバーは127.0.0.1に限定します。インストール時にはNuxtの型生成が実行されます。実AI生成の設定は下記の生成API節を参照してください。
 
 ## 検証
 
@@ -33,24 +53,24 @@ npm run build
 NODENV_VERSION=24.15.0 nodenv exec node scripts/check-app.mjs
 ```
 
-CIも同じゲートを実行します。単体テストはhealth応答に環境情報を含めない契約、結合テストは実HTTP APIと日本語SSR、ブラウザテストは本番ビルドのホーム・テーマ保存・OS追従・キーボード操作・スマホ/PCの横溢れを検証します。ブラウザテストは専用サーバーを起動し、既存サーバーを再利用しません。各テーマの画面をtest-resultsに保存します。フォントはsystem-uiとし、Nuxt UIのフォント取得を無効化しています。
+CIも同じゲートを実行します。単体テストはhealth応答に環境情報を含めない契約、結合テストは実HTTP APIと日本語SSR、ブラウザテストは本番ビルドのカタログ・演習・履歴・報告と管理画面、テーマ保存・OS追従・キーボード操作・スマホ/PCの横溢れを検証します。管理用のテストビルドだけに固定AIを注入します。ブラウザテストは専用サーバーを起動し、既存サーバーを再利用しません。各テーマの画面を `test-results/production`・`test-results/admin`・`test-results/preview` に分けて保存します。統合導線のaxe検査と目視証拠の最終結果は受入項目書で確認します。フォントはsystem-uiとし、Nuxt UIのフォント取得を無効化しています。
 
 ## 本番ビルドのローカル確認
 
+先に「SQLiteとマイグレーション」の手順でリポジトリ外のDBを移行・seedしてください。新規の確認専用DBを作る一連の手順は [受入項目書](../docs/acceptance-test-checklist.md) にあります。アプリの起動だけではDBを作成しません。
+
 ```sh
 npm run build
+MEDIQUEST_DB_PATH=/absolute/data/mediquest.sqlite \
+MEDIQUEST_LOCAL_MODE=true MEDIQUEST_LOCAL_ORIGIN=http://127.0.0.1:3100 \
 NITRO_HOST=127.0.0.1 NITRO_PORT=3100 npm run start
 ```
 
 `/api/health` はプロセスの稼働確認です。DB接続等のreadinessは保証しません。リモート公開の運用・認証は今後の実装です。
 
-## 依存監査の残課題
+## 依存監査
 
-2026-10-24のnpm auditは11件（high 7、moderate 4）を報告しています。high 7件はlisthen経由のnode-forgeの署名検証問題から伝播したもので、独立した7つの問題ではありません。node-forge最新版1.4.0にも修正がなく、現在のHTTP起動経路で署名検証を使用する証拠は見つかっていません。生成した本番サーバーの依存一覧にもnode-forge/listhenは含まれていませんが、上流修正の追跡が必要です。[署名検証のadvisory](https://github.com/advisories/GHSA-86w9-cpqp-85rv)
-
-旧esbuildにはWindows開発サーバーに関するlowの問題も報告されています。今回のmacOS上の検証には該当しません。fontlessの要求範囲を越える強制更新は行っていません。[esbuildのadvisory](https://github.com/advisories/GHSA-g7r4-m6w7-qqqr)
-
-GitHubの必須チェック登録と、TAKTからのIssue→PRの通し運転は別途確認が必要です。
+2026-10-31にNuxt 4.6.3・node-forge 1.4.2へ互換範囲で更新しました。npm auditはhigh/critical 0、moderate 42、low 2を報告しています。依存経路に伝播した件数を含みます。残る開発・ビルド依存の経路と採用判断は [依存監査記録](../docs/dependency-audit.md) を参照してください。ゼロ脆弱性とは報告していません。
 
 ## SQLiteとマイグレーション
 
@@ -68,19 +88,19 @@ MEDIQUEST_DB_PATH=/absolute/data/mediquest.sqlite npm run db:seed
 
 `npm run test:integration` は一時ディレクトリ内の新規DBのみを使用し、移行再適用、再接続での保持、seedの冪等性、FK・NOT NULL・role制約を確認します。実データを使いません。実データ投入前には下記「バックアップと別パスへの復元検証」の手順で確認してください。
 
-Drizzle Kit追加後のmoderate 4件は開発用ローダー経由の旧esbuildからの伝播です。対象はesbuild自身の開発サーバーで、移行生成・適用では起動していません。Kitの旧版への自動降格は行わず、上流修正を追跡します。
+Drizzle Kitの旧esbuild等は上記の依存監査記録で扱います。修正目的の旧版への降格や互換範囲外の強制更新は行いません。
 
 ## 演習画面のデザイン案（Issue #14）
 
-TAKT は承認連携 #10 のため停止中で、本差分は監督下で個別に実装した開発プレビューです。人によるデザイン合意前の案であり、基準デザイン確定ではありません。
+デザイン確認用の非永続プレビューです。実際に保存する演習画面とは独立しています。
 
-`npm run dev` で `/dev/study-preview` を開くと、1つ/2つの選択、回答確定、模擬保存、失敗・再試行、正誤/解説/引用、明示的な次への遷移を確認できます。末尾のデモ操作で次の保存を1回失敗させます。記録は保存されず、DB・APIは呼びません。教材登録・報告・再開など未実装の機能は提供しません。固定問題は操作説明用で、医学教材ではありません。
+`npm run dev` で `/dev/study-preview` を開くと、1つ/2つの選択、回答確定、模擬保存、失敗・再試行、正誤/解説/引用、明示的な次への遷移を確認できます。末尾のデモ操作で次の保存を1回失敗させます。記録は保存されず、DB・APIは呼びません。このプレビュー内では教材登録・報告・再開は提供しません。固定問題は操作説明用で、医学教材ではありません。
 
-ページは開発時のみ登録します。本番での404と固定データ非包含は本番E2Eおよびビルド検査の対象です。両テーマとスマホ/PCを実機確認し、人の合意まではDraftを維持します。
+ページは開発時のみ登録します。本番での404と固定データ非包含は本番E2Eおよびビルド検査の対象です。両テーマとスマホ/PCのブラウザ検証を行います。ユーザーの受入判断は項目書へ記入してください。
 
 ## 教材API（ローカル限定・Issue #15）
 
-TAKT の承認連携 #10 が未解決のため、このAPIは監督下の個別実装です。UI・AI生成・認証サービス・教材更新/削除は対象外です。
+Issue #15単体では教材APIを実装しました。教材・生成UIは末尾のIssue #72節を参照してください。認証サービス・教材更新/削除は初回対象外です。
 
 環境変数 `MEDIQUEST_DB_PATH`（リポジトリ外の絶対パス）に加え、`MEDIQUEST_LOCAL_MODE=true` と `MEDIQUEST_LOCAL_ORIGIN=http://127.0.0.1:3000` を明示します。`npm run db:migrate` と `npm run db:seed` は事前に別途実行し、アプリは自動移行/seedしません。開発は `npm run dev`、本番形式のローカル確認は `NITRO_HOST=127.0.0.1 NITRO_PORT=3000 npm run start` とし、すべてloopbackにbindしてください。
 
@@ -90,7 +110,7 @@ TAKT の承認連携 #10 が未解決のため、このAPIは監督下の個別�
 - `GET /api/admin/sources?limit=20`: `items`（id/title/createdAt）と `nextCursor` を返します。次ページは `before=<nextCursor>`。最大100件、作成日時・ID降順。本文を含めません。
 - `GET /api/admin/sources/:id`: 本文を含む教材JSON。IDは正整数の10進表記で安全整数以内です。不正400、不存在404です。
 
-タイトルは前後trim後1〜200 Unicode code points、本文は空白のみ不可・100,000 code points以内です。本文の改行・前後空白・HTML文字列を保持します。HTMLとして実行せず、将来のUIでも `v-html` で表示しません。未知フィールド（createdBy/role等）は400です。要求全体は512 KiBまで実受信量で検査し、受信待ちは10秒以内です。受信待ちにDB接続を保持せず、保存直前にも管理者権限を確認します。
+タイトルは前後trim後1〜200 Unicode code points、本文は空白のみ不可・100,000 code points以内です。本文の改行・前後空白・HTML文字列を保持します。現在の管理UIでもHTMLとして実行せず、`v-html` で表示しません。未知フィールド（createdBy/role等）は400です。要求全体は512 KiBまで実受信量で検査し、受信待ちは10秒以内です。受信待ちにDB接続を保持せず、保存直前にも管理者権限を確認します。
 
 失敗は固定日本語メッセージと `error.code` を返します。主な状態は400入力不正、403拒否、404不存在、409再送競合、413過大、415JSON以外、500予期しない障害です。本文・DBパス・SQL・生例外を応答/ログへ出しません。再送記録は `source_creation_requests` に保存し、教材と同じIMMEDIATE transactionで作成します。既存sourcesに必須列を追加せず、追加移行で既存データを保持します。
 
@@ -98,7 +118,7 @@ TAKT の承認連携 #10 が未解決のため、このAPIは監督下の個別�
 
 ## 生成受付と下書き保存サービス（Issue #18）
 
-`server/services/generation/service.ts` の `generateQuestions(input, config, provider)` は管理者の生成要求を受け付け、検証済み候補を未公開・未レビューの下書きに保存します。TAKT #10 の承認連携が未解決のため監督下の個別実装です。HTTP APIとAnthropic adapterの接続は次節Issue #20を参照してください。実課金検証とプロセス再起動時の自動復旧は未対応です。管理画面はIssue #72の節を参照してください。採用・公開APIはIssue #24の節を参照してください。テストの固定providerは `tests/` 内に限り、実アプリの生成機能として公開しません。
+`server/services/generation/service.ts` の `generateQuestions(input, config, provider)` は管理者の生成要求を受け付け、検証済み候補を未公開・未レビューの下書きに保存します。HTTP APIとAnthropic adapterの接続は次節Issue #20を参照してください。実課金検証とプロセス再起動時の自動復旧は未対応です。管理画面はIssue #72の節を参照してください。採用・公開APIはIssue #24の節を参照してください。テストの固定providerは `tests/` 内に限り、実アプリの生成機能として公開しません。
 
 入力は `sourceId`（正の安全整数）、`requestedCount`（1〜10）、`title`（trim後1〜200 Unicode code points）、`requestKey`（UUID形式）だけです。利用者IDは受け取らず、既存固定管理者のDB上の役割を確認します。model/promptVersionはサーバー側の引数（空白のみ不可・各200 code points以内）から受け付け、runへ固定します。具体的な本番モデルは未決定です。要求比較はsource ID・要求数・セット名を使い、後日のモデル設定変更では再送を競合扱いしません。
 
@@ -114,7 +134,7 @@ TAKT の承認連携 #10 が未解決のため、このAPIは監督下の個別�
 
 ## 生成開始・状態照会API（Issue #20）
 
-TAKT停止中の監督下実装です。`POST /api/admin/sources/:id/generations` にJSON `{ "title": "セット名", "requestedCount": 1 }` とUUIDの `Idempotency-Key` を送ります。利用者・モデル・APIキーはbodyでは指定できません。既存のローカル管理者/socket/Host/Origin/no-store境界を適用します。新規要求はproviderの終了をawaitし201、既存終端受付の再送は200、同一キーの元要求がrunningなら202です。HTTP 201は生成成功の意味ではなく、必ず `status` と `errorCode` を確認してください。失われた応答は同じ入力・キーのPOST再送で取得します。
+`POST /api/admin/sources/:id/generations` にJSON `{ "title": "セット名", "requestedCount": 1 }` とUUIDの `Idempotency-Key` を送ります。利用者・モデル・APIキーはbodyでは指定できません。既存のローカル管理者/socket/Host/Origin/no-store境界を適用します。新規要求はproviderの終了をawaitし201、既存終端受付の再送は200、同一キーの元要求がrunningなら202です。HTTP 201は生成成功の意味ではなく、必ず `status` と `errorCode` を確認してください。失われた応答は同じ入力・キーのPOST再送で取得します。
 
 `GET /api/admin/generations/:id` はrun/set/source ID・状態・要求数・記録済みmodel/promptVersion・時刻・固定errorCodeだけを返します。`updatedAt` は現在の状態を書いた時刻（開始時または終了時）です。APIキー・教材本文・生レスポンスは返しません。runningは実プロセスの生存を保証せず、再起動しても自動再開・失敗化しません。永続worker/自動復旧は未実装です。管理UIはIssue #72の節を参照してください。
 
@@ -135,7 +155,7 @@ TAKT停止中の監督下実装です。`POST /api/admin/sources/:id/generations
 
 ## 候補閲覧と明示確認API（Issue #22）
 
-TAKT #10の承認連携が未解決のため監督下の個別実装です。既存のローカル管理境界とno-storeを適用します。教材・候補本文をログへ出しません。UI・編集は未実装で、採用順序・公開APIは次節を参照してください。人による演習デザイン合意も別途必要です。
+既存のローカル管理境界とno-storeを適用します。教材・候補本文をログへ出しません。管理UI・内容編集はIssue #74節、採用順序・公開APIは次節を参照してください。
 
 - `GET /api/admin/sets?limit=20`: id/title/status/sourceId/createdAt/candidateCount/reviewedCountとnextCursor。最大100件、createdAt/id降順、次ページはbeforeにnextCursorを指定。一覧は本文・正答を含みません。
 - `GET /api/admin/sets/:id`: セットと生成runに属するcandidates（版ID、問題ID、版番号、本文、選択肢、正答ID、解説、引用、引用照合結果、確認者/時刻、fingerprint）。候補のない受付は空配列です。published/archivedも管理者は閲覧できます。
@@ -147,7 +167,7 @@ TAKT #10の承認連携が未解決のため監督下の個別実装です。既
 
 ## 採用順序と明示公開API（Issue #24）
 
-管理者が確認済み候補の採用順を保存し、その集合を明示公開できます。公開後の本人限定演習開始/問題取得はIssue #28を参照してください。演習UIは未実装です。回答確定APIはIssue #30を参照してください。公開メタデータの一覧/詳細はIssue #26の節を参照してください。管理者の明示的な公開停止はIssue #46の節を参照してください。管理UI、内容編集、改訂・複製は対象外です。TAKT #10停止中の監督下実装で、演習画面の人による合意とは独立しています。
+管理者が確認済み候補の採用順を保存し、その集合を明示公開できます。公開後の本人限定演習開始/問題取得はIssue #28を参照してください。演習UIはIssue #71節を参照してください。回答確定APIはIssue #30を参照してください。公開メタデータの一覧/詳細はIssue #26の節を参照してください。管理者の明示的な公開停止はIssue #46の節を参照してください。管理UI・内容編集・改訂用複製は後続のIssue #48/#63/#74で実装済みです。
 
 - `GET /api/admin/sets/:id`: candidatesとは別に採用順のitems（versionId/position/questionId/内容fingerprint/確認情報など）、revision、publishFingerprintを返します。
 - `PUT /api/admin/sets/:id/items`: `{ "expectedRevision": 0, "versionIds": [2, 1] }`。0〜10版を順番どおり全置換します。空集合もdraft保存可能です。確認済み・active・成功run由来の当該セット/教材の版のみ採用でき、版/論理問題の重複を拒否します。同じ現行集合なら再検証後に変更なしで200、異なる集合は期待revision一致時だけ保存してrevisionを1増やします。古い操作がABA後の集合を復活させる更新は行いません。
@@ -171,18 +191,18 @@ IMMEDIATE transactionで集合の置換・revision更新または公開記録を
 
 ## 演習開始・固定出題・再取得（Issue #28）
 
-固定ローカル利用者（admin/learner）が公開セットから演習を開始できます。TAKT #10停止中の監督下実装で、UI・復習は未実装です。回答確定・採点・結果集計はIssue #30、本人の履歴一覧はIssue #36、未回答スキップと再開順序はIssue #41を参照してください。本人PC用の既存socket/Host/Origin/no-store境界を使い、外部認証や利用者切替は追加しません。
+固定ローカル利用者（admin/learner）が公開セットから演習を開始できます。演習UIはIssue #71、結果・履歴・復習UIはIssue #73節を参照してください。回答確定・採点・結果集計はIssue #30、本人の履歴一覧はIssue #36、未回答スキップと再開順序はIssue #41を参照してください。本人PC用の既存socket/Host/Origin/no-store境界を使い、外部認証や利用者切替は追加しません。
 
 - `POST /api/sessions`: UUIDのIdempotency-KeyとJSON `{ "setId": 1 }`。初回201、同一キー・同一セットは200で同じsession、異セットは409。別キーは別演習です。セット公開・現在の出題可能版/形式を開始transaction内で再確認し、0件なら409。未公開は404です。回答列はnullで作成します。
 - `GET /api/sessions/:sessionId`: 本人の概要と順序付きitems（id/position/state/skippedAt）、取得可能な未回答のうち通常未回答を先に、なければスキップ済みをposition順で選んだcurrentItemIdを返します（Issue #41）。保存した版と公開集合のpositionを固定し、再取得や再起動で並び替えません。現在の最新版へ差し替えず、ランダム化もしません。
 - `GET /api/sessions/:sessionId/items/:itemId`: 未回答の場合は、本人sessionに属する問題のid/position/body/choices/requiredSelectionCountだけを返します。選択肢IDは全選択肢を元の順序で返し、どれが正答かを示す配列・判定・解説・引用・教材・生成情報は返しません。HTMLはJSONの文字列であり、将来のUIでもv-htmlに渡しません。
 - `POST /api/sessions/:sessionId/resume`: 空JSON `{}`。未回答かつ現在stoppedの項目に除外理由stoppedと時刻を原子的に保存します。既存除外は上書きしません。同じ操作は冪等です。他人session/itemや別sessionのitemは不存在と同じ404です。
 
-GETは書込みをせず、未回答の現在停止または保存済み除外をstate=excludedとして投影します。通常停止だけでは回答済み項目を除外しません。該当itemのGETはid/position/stateのみ返し、問題を露出しません。resumeで保存した除外は後でactiveへ戻っても当該演習で維持します。全問除外でも履歴を削除せず、currentItemId=nullを返します。Issue #30の回答/resume transactionで残り未回答が0ならcompletedへ更新します。対象0件の正答率は0%ではなくnullです。回答済み項目の除外保存は今回の対象外です。
+GETは書込みをせず、未回答の現在停止または保存済み除外をstate=excludedとして投影します。通常停止だけでは回答済み項目を除外しません。該当itemのGETはid/position/stateのみ返し、問題を露出しません。resumeで保存した除外は後でactiveへ戻っても当該演習で維持します。全問除外でも履歴を削除せず、currentItemId=nullを返します。Issue #30の回答/resume transactionで残り未回答が0ならcompletedへ更新します。対象0件の正答率は0%ではなくnullです。回答済み項目への不備確定による除外は後続Issue #34で対応しています。通常停止だけで回答済み正誤は変更しません。
 
 セット公開停止後も本人の既存演習と同一開始キー再送を保持し、新しい開始だけ拒否します。追加Drizzle移行はstudy_sessions/study_itemsと一意性/FK/状態制約を導入し、既存公開集合・教材・確認情報を保持します。途中item保存失敗時はsessionごとrollbackします。
 
-再取得はページ再読込/サーバー再起動と停止除外の保存までです。回答保存APIは次節を参照してください。再開UIは未実装です。不備版は開始・再取得・再開でも除外します（Issue #34）。
+再取得はページ再読込/サーバー再起動と停止除外の保存までです。回答保存APIは次節を参照してください。再開UIはIssue #71節を参照してください。不備版は開始・再取得・再開でも除外します（Issue #34）。
 
 ## 回答確定・採点・本人feedback（Issue #30）
 
@@ -194,13 +214,13 @@ GETは書込みをせず、未回答の現在停止または保存済み除外�
 
 回答保存・未回答stoppedの除外同期・session完了更新は同一IMMEDIATE transactionです。途中障害は全てrollbackし、安全な500だけを返します。resumeでも除外同期後に完了を判定します。未回答0件ならcompletedとcompletedAtを一度だけ保存し、再送/resumeで時刻を変更しません。GETは状態を投影するだけで更新しません。サーバーが返すcurrentItemIdは保存済みposition順の次の未回答であり、自動遷移や自動回答を実行しません。
 
-session.statisticsはtotalItemCount/excludedCount/eligibleCount/answeredEligibleCount/unansweredEligibleCount/correctEligibleCountを返します。accuracyは **correctEligibleCount / eligibleCount の0〜1比率** です。未回答は未正答として分母に含め、statusで未完了を区別します。対象0件はaccuracy=null・accuracyStatus=no_eligible_items、それ以外はaccuracyStatus=availableです。除外した行や過去回答は削除しません。丸めや点数表示は未実装のUIへ委ねます。
+session.statisticsはtotalItemCount/excludedCount/eligibleCount/answeredEligibleCount/unansweredEligibleCount/correctEligibleCountを返します。accuracyは **correctEligibleCount / eligibleCount の0〜1比率** です。未回答は未正答として分母に含め、statusで未完了を区別します。対象0件はaccuracy=null・accuracyStatus=no_eligible_items、それ以外はaccuracyStatus=availableです。除外した行や過去回答は削除しません。丸めや点数表示は結果UIで行います。
 
-schema/依存追加はありません。既存のローカル利用者/socket/Host/Origin/no-store、有限JSON受信、固定エラー境界を維持します。TAKT #10停止中の監督下実装で、UI・復習・外部認証は対象外です。不備確定は Issue #34、履歴一覧は Issue #36、未回答スキップは Issue #41 を参照してください。
+schema/依存追加はありません。既存のローカル利用者/socket/Host/Origin/no-store、有限JSON受信、固定エラー境界を維持します。このAPI単体の対象外だったUI・復習は後続Issueで実装済みです。外部認証は初回対象外です。不備確定は Issue #34、履歴一覧は Issue #36、未回答スキップは Issue #41 を参照してください。
 
 ## 不備報告の受付と管理者確認（Issue 32）
 
-TAKT #10 の停止中に監督下で実装した API です。UI・通知は未実装です。管理判断・不備版除外は Issue #34、報告者本人の未回答スキップ（報告とは連動しない独立した明示操作）は Issue #41 を参照してください。
+報告UIはIssue #75の節を参照してください。通知は初回対象外です。管理判断・不備版除外は Issue #34、報告者本人の未回答スキップ（報告とは連動しない独立した明示操作）は Issue #41 を参照してください。
 
 - `POST /api/sessions/:sessionId/items/:itemId/reports` は本人の項目に `{ "message": "指摘内容" }` を受け付けます。trim 後 1〜2000 Unicode コードポイント、未知フィールドは拒否します。未回答・回答済み・完了・停止・保存済み除外の項目から報告できます。
 - 同じ利用者・固定問題版の open 報告は一つです。初回は 201 / `replayed:false`、既存があれば 200 / `replayed:true` と既存本文を返します。別の演習や異なる本文で再送しても、最初の本文・参照項目・時刻を上書きしません。入力・所有者検証は再送判定より先です。
@@ -222,7 +242,7 @@ GET は保存しません。resume / 新規回答成功の進捗同期では不�
 
 0006 は Drizzle 生成 SQL の旧表コピーで新規 nullable 列を明示 NULL に補正しています。参照される表を再作成するため移行専用接続で FK を一時停止し、全未適用移行と履歴を IMMEDIATE transaction 内で適用、全 FK 整合を確認してから commit します。失敗時は DDL・データ・履歴を rollback し、成功・失敗とも FK を復元します。アプリ稼働を止めて既存の移行コマンドを実行してください。
 
-TAKT #10 停止中の直接監督実装です。UI・通知・改訂・複製・全版停止・不備解除・復習・外部認証は対象外です。本人の未回答スキップは Issue #41 を、管理者による問題全版の出題停止は Issue #50 の節を参照してください。
+管理判断UIはIssue #75、改訂は #63/#65/#74、復習は #44/#73で実装済みです。通知・不備解除・外部認証は初回対象外です。本人の未回答スキップは Issue #41 を、管理者による問題全版の出題停止は Issue #50 の節を参照してください。
 
 ## 本人限定の演習履歴・中断一覧（Issue #36）
 
@@ -234,11 +254,11 @@ TAKT #10 停止中の直接監督実装です。UI・通知・改訂・複製・
 - `statistics` と `currentItemId` は個別GET（`GET /api/sessions/:sessionId`）と同じ集計定義を同じ時点で投影します。公開停止後やセットarchived後も本人の過去sessionを表示し、未回答の通常停止・不備版・保存済み除外は個別GETと同じく除外として集計します。全問が対象外の `in_progress` は一覧GETでも `in_progress` のまま `currentItemId=null`、`accuracy=null` / `accuracyStatus=no_eligible_items` です。完了への更新は従来どおり回答・resumeのtransactionだけが行います。
 - 一覧GETは書込みをしません。返したIDはそのまま既存の個別GET・resume・item取得に使えます。read transaction内で本人解決→対象ページのsession取得→そのページ分だけ進捗を投影し、全履歴をメモリへ読み込みません。`limit+1` で次ページ有無を判定します。
 
-schema/移行/依存の追加はありません。`study_sessions` は単一利用者・小規模データで、`user_id` が既存一意制約の先頭列にあるため、専用indexは実データ量の根拠が出るまで追加しません。既存のローカルmode/socket/Host/Origin/no-store/固定エラー境界を共有し、保存系の障害は安全な500だけを返します。並び順・status filter・limit/cursor形状・現在タイトル表示は Issue #36 の実装契約であり、プロダクト合意（画面一覧の `/history`・ホームの中断演習・UXの保存済み進捗からの再開）とは区別します。履歴UI・結果専用画面・検索/期間指定・総件数・履歴削除・バックアップ/復元は対象外です。
+schema/移行/依存の追加はありません。`study_sessions` は単一利用者・小規模データで、`user_id` が既存一意制約の先頭列にあるため、専用indexは実データ量の根拠が出るまで追加しません。既存のローカルmode/socket/Host/Origin/no-store/固定エラー境界を共有し、保存系の障害は安全な500だけを返します。並び順・status filter・limit/cursor形状・現在タイトル表示は Issue #36 の実装契約であり、プロダクト合意（画面一覧の `/history`・ホームの中断演習・UXの保存済み進捗からの再開）とは区別します。履歴UI・結果画面はIssue #73、バックアップ/復元は #52で実装済みです。検索/期間指定・総件数・履歴削除は初回対象外です。
 
 ## 本人の未回答スキップと再開順序API（Issue #41）
 
-本人は進行中演習の取得可能な未回答itemを一時的にスキップし、学習を続けられます。`docs/screens-and-data-model.md` の `study_items.skipped_at` と「通常未回答→最後にスキップ分、未回答が残れば完了しない」、`docs/ux-guidelines.md` の「報告者本人が一時スキップして学習継続、誤答として新規記録しない」を実装します。UI・スキップ解除・任意並替え・報告連動の自動操作・誤答復習は対象外です。
+本人は進行中演習の取得可能な未回答itemを一時的にスキップし、学習を続けられます。`docs/screens-and-data-model.md` の `study_items.skipped_at` と「通常未回答→最後にスキップ分、未回答が残れば完了しない」、`docs/ux-guidelines.md` の「報告者本人が一時スキップして学習継続、誤答として新規記録しない」を実装します。スキップUIはIssue #71、誤答復習は #44/#73で実装済みです。スキップ解除・任意並替え・報告連動の自動操作は初回対象外です。
 
 - `POST /api/sessions/:sessionId/items/:itemId/skip` に空JSON `{}` を送ります。利用者・時刻・回答をクライアントが指定するフィールド（`userId` / `skippedAt` / `selectedIds` など）や配列・非オブジェクトは400で、入力検証は所有者判定より先です。他人のsession・別sessionのitem・不存在は同じ404です。
 - 対象は本人のin_progress sessionに属する未回答かつ非除外（停止中でない・不備版でない・保存済み除外でない）itemだけです。回答済み（回答後の遅延再送を含む）・停止・不備・保存済み除外・完了済みsessionへの新規スキップは409で、除外も時刻も書き込みません。
@@ -253,7 +273,7 @@ schema/移行/依存の追加はありません。`study_sessions` は単一利�
 
 ## 本人の誤答から固定版の復習演習を開始するAPI（Issue #44）
 
-本人は完了した自分の演習の誤答だけを集めた新しい復習演習を開始できます。`docs/screens-and-data-model.md` の `mode` (normal/review)・`parent_session_id`、「誤答復習は出題可能な誤答版を使って新規演習を作る。新しい版へ自動置換しない。停止・不備の問題は復習からも除外する」、「公開停止は新規開始を止める」を実装します。UI、改訂版への置換、誤答以外のカスタム復習、間隔反復、親子統合成績、削除は対象外です。
+本人は完了した自分の演習の誤答だけを集めた新しい復習演習を開始できます。`docs/screens-and-data-model.md` の `mode` (normal/review)・`parent_session_id`、「誤答復習は出題可能な誤答版を使って新規演習を作る。新しい版へ自動置換しない。停止・不備の問題は復習からも除外する」、「公開停止は新規開始を止める」を実装します。復習UIはIssue #73で実装済みです。改訂版への自動置換、誤答以外のカスタム復習、間隔反復、親子統合成績、削除は初回対象外です。
 
 - `POST /api/sessions/:sessionId/reviews` に UUID の `Idempotency-Key` と空JSON `{}` を送ります。`:sessionId` は本人の元演習（親）です。利用者・親・版・正誤をクライアントが指定するフィールド（`userId` / `parentSessionId` / `versionIds` / `isCorrect` / `setId` など）や配列・非オブジェクトは400で、入力・キー検証は所有者判定より先です。他人の演習・不存在は同じ404です。
 - 対象は親の `study_items` のうち回答済みかつ誤答（`answered_at` 非null・`is_correct=false`）で保存済み除外がなく、問題が現在active・版が不備でなく・形式検証を通り・親のセットの公開集合に残っている固定版です。正答・未回答・スキップのみ・停止中・不備版・保存済み除外は選びません。選定は開始APIと同じ判定部品を再利用し、最新版への置換はしません。対象0件は409で空の演習を作りません。
@@ -268,7 +288,7 @@ schema/移行/依存の追加はありません。`study_sessions` は単一利�
 
 ## 管理者の明示的なセット公開停止API（Issue #46）
 
-管理者が公開済みセットを明示的に `archived` へ遷移させ、新規の演習開始だけを止めます。`docs/screens-and-data-model.md` の `status` (draft/published/archived)、管理セット画面の「公開済みは閲覧・公開停止・改訂用複製」、「公開停止は新規開始を止めるが進行中演習・履歴は保持」を実装します。UI（確認ダイアログを含む）、改訂用複製、再公開・停止解除、全版の問題停止（Issue #50 の節を参照）、不備確定の変更、内容編集、監査履歴（archivedAt/by列）、削除、認証拡張は対象外です。自動停止は導入せず、管理者の明示操作だけが停止します。
+管理者が公開済みセットを明示的に `archived` へ遷移させ、新規の演習開始だけを止めます。`docs/screens-and-data-model.md` の `status` (draft/published/archived)、管理セット画面の「公開済みは閲覧・公開停止・改訂用複製」、「公開停止は新規開始を止めるが進行中演習・履歴は保持」を実装します。公開停止UIはIssue #74、改訂用複製は #63、全版の問題停止は #50、内容編集は #48/#63で実装済みです。同じセットの再公開・停止解除、不備確定の変更、監査履歴（archivedAt/by列）、削除、認証拡張は初回対象外です。自動停止は導入せず、管理者の明示操作だけが停止します。
 
 - `POST /api/admin/sets/:setId/archive` に空JSON `{}` を送ります。`user`/`status`/`revision`/`expectedRevision` などクライアントが状態や本人を指定するフィールド、配列・非オブジェクトは400で、入力検証はセット検索より先です。不存在は404、draft・公開者/時刻の欠けた公開記録不整合（published/archivedとも）は409です。独立したidempotency keyやexpectedRevisionは受け取りません。
 - `published` かつ公開者/時刻がある場合だけ `archived` へ更新し、既存の安全な nextRevision で `revision` を1増やします。既に `archived` で公開記録があるセットへの再送（並行送信を含む）は同じ保存状態を返し、revisionは増えません。初回/再送とも200で、応答は `id/status/revision/publishedBy/publishedAt/replayed` の明示DTOです。
@@ -277,11 +297,13 @@ schema/移行/依存の追加はありません。`study_sessions` は単一利�
 - 通常セットの停止後の古い公開要求の再送は409です。改訂セットの正確な再送は現在の保存状態を返し、再公開しません。採用集合の変更も409です。
 - IMMEDIATE transactionで権限と対象セットを読み、競合するarchiveと開始要求は直列化されます。開始が先なら既存sessionを保持し、archiveが先なら新規開始を拒否します。UPDATE失敗時はrollbackし、安全な500とno-storeだけを返し、秘密を応答・ログに出しません。ローカル管理者/socket/Host/Origin/no-store、512 KiBの受信上限と固定エラーを再利用し、learnerは403です。GETは書き込みません。
 
-公開停止は一方向で、再公開・停止解除は対象外です。公開済み内容がAPI上不変な現段階に限り、保存状態そのものをキーとして一度だけ遷移させます。将来再公開を導入する場合は、古いarchive要求が新しい公開を停止しないよう別途版照合（expectedRevision等）が必要です。これは未合意の再公開機能を先取りしないための制限です。新しい改訂版の作成と旧版停止の同時処理は後続の改訂Issueで扱い、単独のarchiveはその代替ではありません。schema・migration・依存の変更はありません。HTTP経路、初回/再送とも200、revisionの加算、キー不要は Issue #46 の実装契約であり、既存docsの規定（status archived、公開停止による新規開始停止、既存演習・履歴の保持）とは区別します。
+公開停止は一方向で、再公開・停止解除は対象外です。公開済み内容がAPI上不変な現段階に限り、保存状態そのものをキーとして一度だけ遷移させます。将来再公開を導入する場合は、古いarchive要求が新しい公開を停止しないよう別途版照合（expectedRevision等）が必要です。これは未合意の再公開機能を先取りしないための制限です。新しい改訂版の作成と旧セット停止の同時処理はIssue #63/#65で実装し、単独のarchiveはその代替ではありません。schema・migration・依存の変更はありません。HTTP経路、初回/再送とも200、revisionの加算、キー不要は Issue #46 の実装契約であり、既存docsの規定（status archived、公開停止による新規開始停止、既存演習・履歴の保持）とは区別します。
 
 ## 未公開候補の内容修正・引用再照合・確認取消API（Issue #48）
 
-管理者が、一度も公開していないdraftセットに属する生成候補の問題文・選択肢・正答・解説・引用を修正できます。`docs/screens-and-data-model.md` の管理セット画面「問題・選択肢・正解・解説・引用の確認修正」、公開ルール2「問題内容の編集後は照合・管理者確認をやり直す」、ルール3「公開済みセットの構成と問題版の内容は固定する」を実装します。未公開かつ履歴から参照されていない候補だけを同じ `question_versions` 行で更新します。公開済み・archivedの版の修正、改訂用複製・新version生成、`supersedes` の切替、教材本文の編集、UI、生成モデルの再呼出、通知、不備解除、監査履歴、認証拡張は対象外です。
+以下は同一行編集を導入した時点の契約です。現行APIはIssue #63で派生版作成へ拡張し、共有・公開参照・演習参照・不備版もdraft内では元の版を残して編集できます。現行の版ID変更・再送/競合条件は後段「改訂下書き作成と版編集」を合わせて参照してください。管理UIはIssue #74で提供しています。
+
+管理者が、一度も公開していないdraftセットに属する生成候補の問題文・選択肢・正答・解説・引用を修正できます。`docs/screens-and-data-model.md` の管理セット画面「問題・選択肢・正解・解説・引用の確認修正」、公開ルール2「問題内容の編集後は照合・管理者確認をやり直す」、ルール3「公開済みセットの構成と問題版の内容は固定する」を実装します。未公開かつ履歴から参照されていない候補だけを同じ `question_versions` 行で更新します。導入当時は改訂用複製・派生版生成・UIを含めず、後続Issue #63/#65/#74で追加しました。教材本文の編集、編集操作からのAI再呼出、通知、不備解除、監査履歴、認証拡張は初回対象外です。
 
 - `PUT /api/admin/sets/:setId/versions/:versionId/content`: 本文は `expectedRevision`（GETのセットrevision）、`expectedFingerprint`（GETの候補fingerprint）と `body`/`choices`/`answerIds`/`explanation`/`quote` の完全な組です。部分更新はできません。これ以外のフィールド（`id`/`questionId`/`versionNo`/`sourceId`/`generationRunId`/`reviewedBy`/`reviewedAt`/`quoteVerified` など）、配列・非オブジェクト、不正JSONは400で、入力検証はセット検索より先です。内容5項目は生成結果と同じ契約（`validateGeneration`）で検証します: 本文・解説・引用は空白のみ不可で各10,000文字以内、選択肢は2〜6件・ID形式 `[A-Za-z0-9_-]{1,40}`・版内一意・ラベル2,000文字以内、正答IDは非空・重複なし・選択肢の部分集合。受信上限512 KiB/10秒、Content-Type、ローカル管理者/socket/Host/Origin/no-store、固定エラーは既存部品を再利用し、learner・user欠落・`MEDIQUEST_LOCAL_MODE=false` は403です。
 - 対象外の状態は409です: セットがdraft以外または公開日時あり、対象版が公開記録（`published_at` 非null、archived含む）を持つ別セットの `set_items` から参照、`study_items` から参照（演習履歴が参照する内容は変更しない）、不備確定済み（`invalidated_at` 非null）、生成runが成功以外、問題が `stopped`、問題/runと教材の所属不一致、確認者/時刻の片方だけが記録。所属しない版・不存在のセット/版は404です。
@@ -294,7 +316,7 @@ schema/移行/依存の追加はありません。`study_sessions` は単一利�
 
 ## 管理者による論理問題の全版出題停止API（Issue #50）
 
-管理者が一つの論理問題（`questions` の1行）を `stopped` にし、その問題の**全version**を新規の出題対象から外します。`docs/screens-and-data-model.md` の `questions.status (active/stopped)`「全版の出題停止が必要な場合に使用」と管理者の出題停止を実装します。セット単位の公開停止（Issue #46 の `archived`）、版単位の不備確定（Issue #34 の `invalidated`）とは別の操作で、どちらも置き換えません。UI、停止解除・再開、不備確定の変更、停止理由・停止者・時刻の監査列、通知、改訂用複製、公開切替、新しい認証、削除は対象外です。
+管理者が一つの論理問題（`questions` の1行）を `stopped` にし、その問題の**全version**を新規の出題対象から外します。`docs/screens-and-data-model.md` の `questions.status (active/stopped)`「全版の出題停止が必要な場合に使用」と管理者の出題停止を実装します。セット単位の公開停止（Issue #46 の `archived`）、版単位の不備確定（Issue #34 の `invalidated`）とは別の操作で、どちらも置き換えません。全版停止UIはIssue #74、改訂用複製・公開切替は #63/#65で実装済みです。停止解除・再開、不備確定の変更、停止理由・停止者・時刻の監査列、通知、新しい認証、削除は初回対象外です。
 
 - `POST /api/admin/questions/:questionId/stop` に空JSON `{}` を送ります。`status`/`userId`/`reason`/`questionId` などクライアントが状態・本人・理由を指定するフィールド、配列・非オブジェクト・不正JSONは400で、入力検証は問題の検索より先です。`questionId` は正の整数以外400、不存在は404（`error.code: missing`。固定文言は既存の `reviewEndpoint` を再利用）。独立したidempotency keyやexpectedRevisionは受け取りません。Content-Type、512 KiB/10秒の受信上限、ローカル管理者/socket/Host/Origin/no-store、固定エラーは既存部品を再利用し、learner・user欠落・`MEDIQUEST_LOCAL_MODE=false` は403です。
 - `active` の問題だけを同じIMMEDIATE transaction内で `stopped` へ一度更新します。既に `stopped` の問題への再送（並行送信を含む）は同じ保存状態を返し、何も書きません。初回/再送とも200で、応答は `id/status/replayed` の明示DTOです。409になる状態はありません（CHECK制約により active/stopped 以外の値は存在しません）。
@@ -303,7 +325,7 @@ schema/移行/依存の追加はありません。`study_sessions` は単一利�
 - 既存の未回答itemは GET で `state:'excluded'` に投影（書き込みなし）、answer/skip は409、resume または別itemの回答成功時の進捗同期で `excluded_reason='stopped'` を一度保存し、全除外なら完了にします。GETだけでは完了を書きません。既存の回答済みitemは通常停止だけでは除外・再採点せず、選択・正誤・回答時刻・feedback・集計を保持し、同じ回答の再送は `replayed:true` です。版の不備確定（`invalidated`）は停止より常に優先して投影します。
 - 停止と開始/復習開始/回答/スキップは IMMEDIATE transaction の先後で直列化されます。回答が先なら保存済み採点を保持し、停止が先なら回答は409で回答列はnullのままです。どちらの順でも停止版への新規採点は起きません。UPDATE失敗時はrollbackし、安全な500とno-storeだけを返し、秘密を応答・ログに出しません。再起動後も停止状態と再送の結果は保持されます。
 
-出題停止は一方向で、停止解除・再開は対象外です。再開がないため古いstop要求の再送が別の状態を上書きすることはなく、独立したidempotency keyは不要です。将来再開を導入する場合は、古いstop要求の再送が新しい再開を無効化しないよう別途照合（version照合など）が必要です。公開済み問題を修正する改訂（新version作成と旧版停止の同時処理）は別途未実装のままで、単独のstopはその代替ではなく、本機能で改訂機能を完了扱いしません。schema・migration・依存の変更はありません。HTTP経路、空body、初回/再送とも200、`id/status/replayed` の応答形、一方向限定は Issue #50 の実装契約であり、既存docsの規定（`questions.status` による全版停止、既存の停止判定）とは区別します。
+出題停止は一方向で、停止解除・再開は対象外です。再開がないため古いstop要求の再送が別の状態を上書きすることはなく、独立したidempotency keyは不要です。将来再開を導入する場合は、古いstop要求の再送が新しい再開を無効化しないよう別途照合（version照合など）が必要です。公開済み問題を修正する改訂（新version作成と旧セット停止の同時処理）はIssue #63/#65を参照してください。単独のstopはその代替ではありません。schema・migration・依存の変更はありません。HTTP経路、空body、初回/再送とも200、`id/status/replayed` の応答形、一方向限定は Issue #50 の実装契約であり、既存docsの規定（`questions.status` による全版停止、既存の停止判定）とは区別します。
 
 ## バックアップと別パスへの復元検証（Issue #52）
 
@@ -313,13 +335,14 @@ Git管理外の保管ディレクトリを用意し、共有しないでくだ�
 生成ファイルの権限は所有者の読み書きのみ（0600）です。
 同期・暗号化・世代管理・自動スケジュールは本CLIの対象外です。
 
-1. アプリとDBを利用する他のプロセスを停止します。
+1. 自分で起動したアプリを停止します。同じDBを使う別プロセスがある場合は、その所有者に停止を依頼してから進めます。他のClaude/Codexプロセスを勝手に終了しません。
 2. appディレクトリで、現在のDBと未使用の出力先を絶対パスで指定します。
    `MEDIQUEST_DB_PATH=/absolute/current.sqlite npm run db:backup -- /absolute/backups/snapshot.sqlite`
 3. バックアップを別の未使用パスへ復元して検査します。
    `npm run db:restore -- /absolute/backups/snapshot.sqlite /absolute/restored.sqlite`
 4. `MEDIQUEST_DB_PATH` を `/absolute/restored.sqlite` に切り替えて起動します。
-   `MEDIQUEST_DB_PATH=/absolute/restored.sqlite npm run start`
+   `MEDIQUEST_DB_PATH=/absolute/restored.sqlite MEDIQUEST_LOCAL_MODE=true MEDIQUEST_LOCAL_ORIGIN=http://127.0.0.1:3100 NITRO_HOST=127.0.0.1 NITRO_PORT=3100 npm run start`
+   ポートを変更する場合は `MEDIQUEST_LOCAL_ORIGIN` も同じ値へ変更してください。
 5. 公開セット、演習の再開、履歴の読み取りを確認します。元DBとバックアップは削除せず保管します。
 
 入力は存在する通常ファイル、出力は存在しないファイルに限定します。
@@ -336,11 +359,11 @@ SQLiteドライバーのbackup APIでWAL内のcommitも含めてコピーしま�
 ## 改訂データ基盤（段階1・Issue #59）
 
 候補所属を `set_candidates` へ分離し、既存生成版を元runのsetへ一度だけ移行します。
-生成来歴は保持します。生成なしの派生版、改訂元、改訂受付を保存するschemaのみ追加しています。
+生成来歴は保持します。Issue #59では生成なしの派生版、改訂元、改訂受付を保存するschemaを追加しました。
 改訂下書き作成・copy-on-write派生編集は段階2、原子的な改訂公開は段階3で提供しています。
 共有版・他版の派生元は同一行を変更せず、段階2の編集で新行へ分離します。派生元の確認変更は拒否します。
 教材一致・派生元の同一論理問題はサービス検証です。改訂作成時の同一教材・循環防止・元revision等は
-後続の作成APIで検証する境界であり、この段階のDB制約だけでは保証しません。
+Issue #63の作成APIで検証する境界であり、DB制約だけでは保証しません。
 
 更新前にはアプリを停止し、**旧バージョン**の上記CLIでバックアップと別パスへの復元検証を行ってください。
 旧schemaバックアップを新バージョンへ直接復元することはできません。
@@ -369,12 +392,12 @@ UUIDは小文字化します。同じ管理者・キー・正規化要求の再�
 新版は既存review PUTで明示確認し、引用不一致時には警告承認が必要です。
 その後既存items PUTで採用できます。引用一致は正しさを保証しません。
 改訂公開は次節のAPIで行います。旧演習・確定回答は変更しません。
-通常公開への切替、停止解除、不備解除、管理UIはこの段階に含みません。
+管理UIはIssue #74で提供しています。通常公開への切替、停止解除、不備解除は初回対象外です。
 入力上限・DTO・後継IDのエラー形式はIssue #63の補完実装判断です。
 
 ## 原子的な改訂公開（段階3・Issue #65）
 
-改訂の作成/編集/確認/採用/原子的公開APIが利用可能です。管理UIの完成を意味しません。
+改訂の作成/編集/確認/採用/原子的公開APIが利用可能で、管理UIはIssue #74から利用できます。
 
 既存の `POST /api/admin/sets/:setId/publish` に `expectedRevision`、
 `publishFingerprint`、`confirmed:true` を送ります。元ID・元revision・公開者・日時は
@@ -399,7 +422,7 @@ archivedになっても正確な再送が現在状態を返し、元検証・再
 
 ## 公開カタログUI（Issue #67）
 
-`/` は既存の公開一覧APIをブラウザから取得し、20件ずつ「もっと見る」で追記します。`/sets/:id` は直接アクセス・再読み込みでも詳細APIを再取得します。SSRにはカタログを埋め込まず、カタログの永続キャッシュも作りません。通信失敗は明示再試行、追加取得失敗は既存一覧とcursorを保持、403は取得済み情報を破棄します。非公開・公開停止・存在しないIDには共通の表示を使います。演習開始APIは呼ばず「演習画面は準備中です」と表示します。
+`/` は既存の公開一覧APIをブラウザから取得し、20件ずつ「もっと見る」で追記します。`/sets/:id` は直接アクセス・再読み込みでも詳細APIを再取得します。SSRにはカタログを埋め込まず、カタログの永続キャッシュも作りません。通信失敗は明示再試行、追加取得失敗は既存一覧とcursorを保持、403は取得済み情報を破棄します。非公開・公開停止・存在しないIDには共通の表示を使います。詳細の開始操作はIssue #71で演習開始APIへ接続しています。
 
 本番E2Eは専用一時SQLiteを作成し、固定providerのテストfixtureで公開22件・0問・下書き・公開停止を用意します。正常系は実APIを使い、失敗・遅延ケースだけブラウザrouteを注入します。DB接続はfinallyで閉じます。`npm run test:e2e` の専用ランナーが毎回新規の一時ディレクトリを作り、所有情報をPlaywrightのworkerとserverで共有します。外部の `MEDIQUEST_E2E_DB` は無視し、初期化・テストの成功／失敗後はランナーが作成時に保持したディレクトリだけを削除します。所有情報なしの直接 `playwright test` 実行は拒否します。共有DBの状態を切り替えるため本番E2Eはworker 1で実行します。ホームの空状態assertは実際に空のDBで確認するよう変更しました（AC-2.1/AC-4）。preview専用テスト、本番preview404、固定問題・test transport非包含検査は維持します。画面証拠はtest-resultsに保存します。検証の成功可否は実行レポートを参照してください。
 
@@ -409,7 +432,7 @@ archivedになっても正確な再送が現在状態を返し、元検証・再
 
 演習画面は保存済みの版・順序・必要選択数を使い、回答保存後も解説を表示したまま「次へ」を待ちます。保存結果が不明な場合は選択を固定し、「保存状態を確認する」または同じ回答の再送で確認します。中断後は同じURLから再開でき、未確定の選択は保持しません。スキップは未回答のままで、通常の未回答の後に戻ります。停止・不備で除外された問題は回答せず、全問除外は「集計対象なし」です。
 
-完了画面はこのページ内に表示します。結果/履歴/誤答復習はIssue #73で接続し、不備報告UIは後続Issueです。未実装ページへのリンクは提供しません。実サーバー・一時SQLiteのブラウザ回帰は `tests/e2e/study.spec.ts`、fixtureは `tests/e2e/fixtures/study-db.ts` です。テストは実教材・実AIキーを使用しません。
+完了画面はこのページ内に表示します。結果/履歴/誤答復習はIssue #73で接続し、不備報告UIはIssue #75で接続しています。実サーバー・一時SQLiteのブラウザ回帰は `tests/e2e/study.spec.ts`、fixtureは `tests/e2e/fixtures/study-db.ts` です。テストは実教材・実AIキーを使用しません。
 
 ## 結果・履歴・誤答復習（Issue #73）
 
@@ -443,7 +466,7 @@ running・succeeded・failed・状態不明を区別し、GETの更新日時を�
 
 セット公開停止は新規演習開始だけを止めます。論理問題の全版停止は別の確認操作で、その問題の新規出題・進行中の未回答を止めます。通常停止では回答済みの履歴・採点を削除せず、不備確定や停止解除の代替にはしません。停止した採用候補は選択解除して残りの問題を公開できます。既存候補DTOには未採用候補の停止状態が含まれないため、その停止表示は当画面での操作後のみ保持し、再読み込み後は復元しません。操作の可否は常にAPI側でも検証します。
 
-専用admin E2Eは実SQLite/本番モードサーバー/テスト専用固定providerを使い、内容編集・引用警告・確認取消・採用順・公開・停止・改訂公開、旧回答の版保持、競合/応答喪失/403、両画面幅とテーマ、キーボードを確認します。本番設定・DB schema・認可・API DTOは変更しません。専用axe検査は別Issueです。
+専用admin E2Eは実SQLite/本番モードサーバー/テスト専用固定providerを使い、内容編集・引用警告・確認取消・採用順・公開・停止・改訂公開、旧回答の版保持、競合/応答喪失/403、両画面幅とテーマ、キーボードを確認します。本番設定・DB schema・認可・API DTOは変更しません。統合導線のaxe検査はIssue #77で追加し、最終結果は受入項目書に記録します。
 
 ## 不備報告と管理判断（Issue #75）
 
