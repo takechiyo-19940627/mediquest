@@ -300,7 +300,7 @@ async function save() {
           :disabled="locked"
           :aria-label="`問題 ${index + 1} を削除`"
           @click="questions.splice(index, 1)"
-          >この問題を削除</UButton
+          >問題 {{ index + 1 }} を削除</UButton
         >
       </section>
       <UButton
