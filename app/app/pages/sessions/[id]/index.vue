@@ -271,6 +271,7 @@ onBeforeUnmount(() => {
       </div>
       <UCard v-else-if="!busy && session.status === 'completed'">
         <h2 class="text-xl font-semibold">演習が完了しました</h2>
+        <UButton :to="`/sessions/${session.id}/result`">結果を見る</UButton>
         <p v-if="session.statistics.eligibleCount === 0">集計対象なし</p>
         <p v-else>
           正答 {{ session.statistics.correctEligibleCount }} /
