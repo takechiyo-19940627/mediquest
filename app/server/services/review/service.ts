@@ -1,3 +1,4 @@
+import { rejectPastExamMutation } from '../past-exams/service';
 import {
   nextRevision,
   publicationState,
@@ -115,6 +116,7 @@ export function confirmVersion(
   return connection.db.transaction(
     (tx) => {
       const user = requireAdministrator({ db: tx });
+      rejectPastExamMutation(tx, setId);
       input = reviewInput(input);
       const set = tx
         .select()
@@ -217,6 +219,7 @@ export function updateVersionContent(
   return connection.db.transaction(
     (tx) => {
       requireAdministrator({ db: tx });
+      rejectPastExamMutation(tx, setId);
       const input = contentInput(value);
       const set = tx
         .select()

@@ -1,3 +1,4 @@
+import { rejectPastExamMutation } from '../past-exams/service';
 import { and, eq, isNotNull } from 'drizzle-orm';
 import type { Connection } from '../../db/connection';
 import {
@@ -19,6 +20,7 @@ export function createRevision(
   return connection.db.transaction(
     (tx) => {
       const user = requireAdministrator({ db: tx });
+      rejectPastExamMutation(tx, setId);
       const input = revisionInput(value);
       const requestFingerprint = revisionFingerprint(setId, input);
       const dto = (

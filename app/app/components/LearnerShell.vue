@@ -9,8 +9,8 @@
         <nav aria-label="学習ナビゲーション" class="flex flex-wrap gap-2">
           <UButton to="/" variant="link">ホーム</UButton>
           <UButton to="/history" variant="link">履歴</UButton>
-          <UButton to="/admin/sources" variant="link"
-            >教材管理（管理者用）</UButton
+          <UButton to="/admin/past-exams" variant="link"
+            >過去問を登録・管理</UButton
           >
         </nav>
         <ThemePicker />

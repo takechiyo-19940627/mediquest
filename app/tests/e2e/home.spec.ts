@@ -16,7 +16,7 @@ test('home, keyboard theme changes, persistence and responsive layout', async ({
   await page.emulateMedia({ colorScheme: 'dark' });
   await page.goto('/');
   await expect(
-    page.getByRole('heading', { name: '学習ホーム', exact: true }),
+    page.getByRole('heading', { name: '過去問で学ぶ', exact: true }),
   ).toBeVisible();
   await expect(page.locator('html')).toHaveClass(/dark/);
   for (const [label, theme] of [

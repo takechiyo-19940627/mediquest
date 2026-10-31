@@ -17,14 +17,14 @@ test('real catalog pagination, direct detail, privacy, themes and keyboard navig
   });
   const responses: string[] = [];
   page.on('response', async (response) => {
-    if (response.url().includes('/api/sets'))
+    if (response.url().includes('/api/past-exams'))
       responses.push(await response.text());
   });
   const ssr = await request.get('/');
   expect(await ssr.text()).not.toContain('公開セット22');
   await page.goto('/');
   await expect(
-    page.getByRole('list', { name: '公開セット' }).getByRole('listitem'),
+    page.getByRole('list', { name: '過去問' }).getByRole('listitem'),
   ).toHaveCount(20);
   for (const theme of ['ライト', 'ダーク']) {
     await page.getByRole('button', { name: theme, exact: true }).click();
@@ -123,7 +123,7 @@ test('initial and additional failures retry explicitly with the same cursor', as
 }) => {
   let fail = true;
   const cursors: string[] = [];
-  await page.route('**/api/sets?**', async (route) => {
+  await page.route('**/api/past-exams?**', async (route) => {
     const cursor = new URL(route.request().url()).searchParams.get('before');
     if (cursor) cursors.push(cursor);
     if (fail) {

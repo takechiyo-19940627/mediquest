@@ -85,6 +85,12 @@ export async function seedCatalog() {
       .run('ARCHIVED_SECRET_TITLE', f.archivedId);
     // Published zero-question sets remain visible.
     f.c.client.prepare('delete from set_items where set_id=?').run(ids[21]!);
+    for (const id of ids)
+      f.c.client
+        .prepare(
+          'insert into past_exams(set_id,exam_name,year,subject,source_reference) values(?,?,?,?,?)',
+        )
+        .run(id, '検定試験', '2025', '情報', '');
     await f.c.client.backup(e2eDatabasePath());
     return { ids, draftId: f.draftId, archivedId: f.archivedId };
   } finally {

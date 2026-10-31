@@ -217,6 +217,9 @@ onBeforeUnmount(() => {
         {{ session.statistics.excludedCount }}問を除外しています。
       </p>
       <template v-if="question && item">
+        <p v-if="item.questionNumber" class="text-muted">
+          過去問の問題番号：{{ item.questionNumber }}
+        </p>
         <StudyQuestion
           :question="question"
           :answer="answer"

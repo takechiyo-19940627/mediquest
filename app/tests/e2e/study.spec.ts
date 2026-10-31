@@ -200,7 +200,9 @@ test('delayed save ignores double click and late result after navigation', async
   const url = page.url();
   await page.getByRole('link', { name: '中断してホームへ' }).click();
   release();
-  await expect(page.getByRole('heading', { name: '学習ホーム' })).toBeVisible();
+  await expect(
+    page.getByRole('heading', { name: '過去問で学ぶ' }),
+  ).toBeVisible();
   await page.goto(url);
   await expect(
     page.getByRole('heading', { name: '問題2', exact: true }),

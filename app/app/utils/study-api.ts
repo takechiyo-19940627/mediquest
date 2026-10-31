@@ -20,6 +20,7 @@ export interface StudySummary {
   };
 }
 export interface StudyItem {
+  questionNumber?: string;
   id: number;
   position: number;
   state?: 'excluded';
