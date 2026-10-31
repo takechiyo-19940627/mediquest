@@ -7,3 +7,5 @@ AI を使った問題演習アプリ。Rust 学習と実用アプリの開発を
 - `docs/`: 要求定義などの資料。既存資料の Rust 前提の技術選定は学習側の参考とし、実用側は [技術方針](docs/app-architecture.md) を参照してください。
 
 Rust 関連の開発コマンドは `learning-rust/` 内で実行してください。
+
+実用アプリの残作業と受入完了条件は [初回リリース計画](docs/first-release-plan.md) を参照してください。
