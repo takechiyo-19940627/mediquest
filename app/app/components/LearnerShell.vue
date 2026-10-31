@@ -6,6 +6,13 @@
         class="mx-auto flex max-w-3xl flex-wrap items-center justify-between gap-4 p-6"
       >
         <span class="text-xl font-semibold text-primary">Mediquest</span>
+        <nav aria-label="学習ナビゲーション" class="flex flex-wrap gap-2">
+          <UButton to="/" variant="link">ホーム</UButton>
+          <UButton to="/history" variant="link">履歴</UButton>
+          <UButton to="/admin/sources" variant="link"
+            >教材管理（管理者用）</UButton
+          >
+        </nav>
         <ThemePicker />
       </div>
     </header>

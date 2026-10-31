@@ -16,6 +16,7 @@ export interface StudySummary {
     excludedCount: number;
     correctEligibleCount: number;
     skippedUnansweredCount: number;
+    unansweredEligibleCount: number;
   };
 }
 export interface StudyItem {
@@ -48,4 +49,17 @@ export function studyError(error: unknown) {
   if (status === 409)
     return '現在の状態では操作できません。保存状態を確認してください。';
   return '通信結果を確認できません。保存状態を確認してから再試行してください。';
+}
+
+export interface StudyHistoryEntry {
+  id: number;
+  setTitle: string;
+  status: 'in_progress' | 'completed';
+  mode: 'normal' | 'review';
+  startedAt: number;
+  statistics: StudySummary['statistics'];
+}
+export interface StudyHistoryPage {
+  items: StudyHistoryEntry[];
+  nextCursor: string | null;
 }

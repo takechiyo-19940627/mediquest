@@ -45,6 +45,7 @@ onMounted(() => load());
 <template>
   <LearnerShell>
     <h1 class="text-2xl font-semibold">学習ホーム</h1>
+    <StudyHistory interrupted />
     <p v-if="loading" role="status">公開セットを読み込み中です。</p>
     <div v-if="error" role="alert" class="space-y-3">
       <p>{{ error }}</p>
