@@ -66,7 +66,7 @@ export function versionForSet(db: DatabaseReader, set: SetRow, id: number) {
       (!row.run || row.run.sourceId !== set.sourceId))
   )
     throw new ReviewError('conflict');
-  if (row.version.generationRunId === null) {
+  if (row.version.derivedFromVersionId !== null) {
     const parent =
       row.version.derivedFromVersionId === null
         ? undefined
@@ -177,6 +177,7 @@ export function publicationState(db: DatabaseReader, set: SetRow) {
               generationStatus,
               version.generationRunId,
               version.derivedFromVersionId,
+              version.manualCreatedBy,
             ]),
         ];
   const publishFingerprint = createHash('sha256')

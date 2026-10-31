@@ -129,7 +129,7 @@ it('backfills once while retaining all data, adopted order, requests, history an
           ? { supersedes_set_id: null, supersedes_revision: null }
           : {}),
         ...(tables[index] === 'question_versions'
-          ? { derived_from_version_id: null }
+          ? { derived_from_version_id: null, manual_created_by: null }
           : {}),
       })),
     );

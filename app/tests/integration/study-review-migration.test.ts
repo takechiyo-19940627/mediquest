@@ -93,7 +93,7 @@ update study_items set excluded_reason='invalidated',excluded_at=8 where id=2;`)
         rows.map((row) => ({
           ...(row as Record<string, unknown>),
           ...(tables[index] === 'question_versions'
-            ? { derived_from_version_id: null }
+            ? { derived_from_version_id: null, manual_created_by: null }
             : {}),
           ...(tables[index] === 'question_sets'
             ? { supersedes_set_id: null, supersedes_revision: null }

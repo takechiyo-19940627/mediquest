@@ -87,6 +87,7 @@ export function getSet(connection: Connection, id: number) {
       candidates: rows.map(({ version, source }) => ({
         id: version.id,
         generationRunId: version.generationRunId,
+        manualCreatedBy: version.manualCreatedBy,
         derivedFromVersionId: version.derivedFromVersionId,
         questionId: version.questionId,
         versionNo: version.versionNo,

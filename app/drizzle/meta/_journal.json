@@ -71,6 +71,13 @@
       "when": 1792989463250,
       "tag": "0009_set_candidates_revision_base",
       "breakpoints": true
+    },
+    {
+      "idx": 10,
+      "version": "6",
+      "when": 1793447128691,
+      "tag": "0010_public_tinkerer",
+      "breakpoints": true
     }
   ]
 }

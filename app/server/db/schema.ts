@@ -199,6 +199,9 @@ export const questionVersions = sqliteTable(
       () => generationRuns.id,
       { onDelete: 'restrict' },
     ),
+    manualCreatedBy: integer('manual_created_by').references(() => users.id, {
+      onDelete: 'restrict',
+    }),
     derivedFromVersionId: integer('derived_from_version_id').references(
       (): AnySQLiteColumn => questionVersions.id,
       { onDelete: 'restrict' },
@@ -212,7 +215,7 @@ export const questionVersions = sqliteTable(
     ),
     check(
       'question_version_provenance_check',
-      sql`(${table.generationRunId} IS NOT NULL AND ${table.derivedFromVersionId} IS NULL) OR (${table.generationRunId} IS NULL AND ${table.derivedFromVersionId} IS NOT NULL)`,
+      sql`(${table.generationRunId} IS NOT NULL) + (${table.derivedFromVersionId} IS NOT NULL) + (${table.manualCreatedBy} IS NOT NULL) = 1`,
     ),
     unique('question_version_number_unique').on(
       table.questionId,
@@ -419,5 +422,24 @@ export const issueReports = sqliteTable(
       'issue_report_status_check',
       sql`${table.status} IN ('open','confirmed','dismissed')`,
     ),
+  ],
+);
+
+export const manualSetRequests = sqliteTable(
+  'manual_set_requests',
+  {
+    id: integer('id').primaryKey({ autoIncrement: true }),
+    requestedBy: integer('requested_by')
+      .notNull()
+      .references(() => users.id, { onDelete: 'restrict' }),
+    requestKey: text('request_key').notNull(),
+    requestHash: text('request_hash').notNull(),
+    setId: integer('set_id')
+      .notNull()
+      .references(() => questionSets.id, { onDelete: 'restrict' }),
+    createdAt: integer('created_at').notNull(),
+  },
+  (table) => [
+    unique('manual_set_request_unique').on(table.requestedBy, table.requestKey),
   ],
 );
