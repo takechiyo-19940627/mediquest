@@ -143,6 +143,12 @@ test('complete local release journey uses real APIs and preserves historical ans
   await page
     .getByRole('button', { name: 'この問題をスキップ', exact: true })
     .click();
+  await expect(
+    page.getByText(
+      'スキップしました。未回答のまま保持され、通常の未回答の後に戻ります。',
+      { exact: true },
+    ),
+  ).toBeVisible();
   await answer(page, '選択肢A');
   await page.getByRole('button', { name: '次へ', exact: true }).click();
   await answer(page, '選択肢A');

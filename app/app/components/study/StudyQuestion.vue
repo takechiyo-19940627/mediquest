@@ -4,6 +4,7 @@ defineProps<{
   question: StudyQuestionData;
   answer: AnswerState;
   saveMessage?: string;
+  busy?: boolean;
 }>();
 defineEmits<{ select: [id: string]; submit: []; next: [] }>();
 </script>
@@ -19,7 +20,7 @@ defineEmits<{ select: [id: string]; submit: []; next: [] }>();
       </p>
     </div>
     <fieldset
-      :disabled="answer.save !== 'editing'"
+      :disabled="busy || answer.save !== 'editing'"
       aria-describedby="selection-hint"
       class="space-y-3"
     >
@@ -33,7 +34,7 @@ defineEmits<{ select: [id: string]; submit: []; next: [] }>();
           base: 'focus-visible:outline-solid focus-visible:outline-2 focus-visible:outline-primary focus-visible:outline-offset-4',
         }"
         :model-value="answer.selected[0]"
-        :disabled="answer.save !== 'editing'"
+        :disabled="busy || answer.save !== 'editing'"
         @update:model-value="(value) => value && $emit('select', value)"
       />
       <div
@@ -50,6 +51,7 @@ defineEmits<{ select: [id: string]; submit: []; next: [] }>();
           :label="choice.label"
           :model-value="answer.selected.includes(choice.id)"
           :disabled="
+            busy ||
             answer.save !== 'editing' ||
             (answer.selected.length >= question.required &&
               !answer.selected.includes(choice.id))
@@ -84,14 +86,20 @@ defineEmits<{ select: [id: string]; submit: []; next: [] }>();
       size="lg"
       :loading="answer.save === 'saving'"
       :disabled="
-        answer.selected.length !== question.required || answer.save === 'saving'
+        busy ||
+        answer.selected.length !== question.required ||
+        answer.save === 'saving'
       "
       @click="$emit('submit')"
     >
       {{ answer.save === 'failed' ? '保存を再試行する' : '回答する' }}
     </UButton>
     <slot v-if="answer.save === 'saved'" name="feedback" />
-    <UButton v-if="answer.save === 'saved'" size="lg" @click="$emit('next')"
+    <UButton
+      v-if="answer.save === 'saved'"
+      size="lg"
+      :disabled="busy"
+      @click="$emit('next')"
       >次へ</UButton
     >
   </section>
