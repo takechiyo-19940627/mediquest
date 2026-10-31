@@ -1,6 +1,8 @@
 import { readdirSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { expect, test } from '@playwright/test';
+import { emptyCatalog } from './fixtures/catalog-db';
+test.beforeEach(() => emptyCatalog());
 
 test('home, keyboard theme changes, persistence and responsive layout', async ({
   page,
