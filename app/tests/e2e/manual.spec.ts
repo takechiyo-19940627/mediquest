@@ -83,11 +83,14 @@ test('registers without AI or source, studies, revises and preserves historical 
   );
   await page.goto(`${sessionPath}/result`);
   await expect(
-    page.getByText('正しい選択肢を選んでください。', { exact: true }),
+    page.getByRole('heading', {
+      name: '問題 1: 正しい選択肢を選んでください。',
+      exact: true,
+    }),
   ).toBeVisible();
-  await expect(page.getByText('修正した問題文', { exact: true })).toHaveCount(
-    0,
-  );
+  await expect(
+    page.getByRole('heading', { name: /修正した問題文/ }),
+  ).toHaveCount(0);
   await page.getByRole('button', { name: '誤答を復習する' }).click();
   await expect(
     page.getByText('正しい選択肢を選んでください。', { exact: true }),
