@@ -47,3 +47,5 @@ Nuxt基盤、SQLite/Drizzle、教材・生成・確認・公開・演習・履�
 TAKT・定期実行を再開せず、他のClaude/Codexプロセスを無断で終了しない。開発・マージ条件は [開発プロセス](development-process.md) に従う。
 
 アプリSHA `68aa11af244919f44a8cf2f2a6a23ef1595936a1` の全7ゲートは2026-10-31に成功（unit108 / integration238 / production50 / admin48 / preview4）。ユーザー本人の受入確認と実AI生成品質の検証は未実施であり、開発側の自動検証と分ける。最終証拠は [受入項目書](acceptance-test-checklist.md) と [PR #86](https://github.com/takechiyo-19940627/mediquest/pull/86) を参照。
+
+最終CIで追加検出した #88（スキップ通信中の選択競合）は `6da55965f1d47282f74cef39208d4f7f282e6efc` で修正し、PC/モバイルの回帰2件を追加。修正後の全7ゲート・計450件・最新head CI・独立レビューの結果はPR #86に記録し、成功確認後にのみマージする。
