@@ -31,3 +31,5 @@ npm run build
 ```
 
 最終品質検証と本番生成物の点検結果は [受け入れテスト項目書](acceptance-test-checklist.md) の証拠欄にまとめる。開発依存の監査結果を本番の安全性保証へ読み替えない。
+
+最終検証: アプリSHA `68aa11af244919f44a8cf2f2a6a23ef1595936a1` の全7ゲート成功（2026-10-31）。本番 `.output/server/package.json` と生成物のパスを点検し、node-forge/listhenが含まれないことを確認。テスト専用provider marker・固定テストキーも `.output` に含まれない。これは上記の開発依存の監査残件を解消したという意味ではない。最新headのCI・独立レビューは [PR #86](https://github.com/takechiyo-19940627/mediquest/pull/86) に記録する。
