@@ -210,8 +210,18 @@ onBeforeUnmount(() => {
                     : '未回答'
                 }}（正解・解説は回答確定後に表示します）
               </p>
-            </div></UCard
-          >
+              <StudyReport
+                v-if="item.state !== 'excluded'"
+                :session-id="session.id"
+                :item-id="item.id"
+                :disabled="busy || starting"
+                @forbidden="
+                  clearSensitive();
+                  forbidden = true;
+                  error = 'この操作は許可されていません。';
+                "
+              /></div
+          ></UCard>
         </li>
       </ol>
     </template>
