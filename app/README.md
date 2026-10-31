@@ -54,7 +54,7 @@ GitHubの必須チェック登録と、TAKTからのIssue→PRの通し運転は
 
 ## SQLiteとマイグレーション
 
-DB基盤はDrizzle ORM/Kitとbetter-sqlite3を使用します。users/sourcesと教材の再送記録を保持し、教材APIから利用します。教材画面は未接続です。接続はserver/db内で明示作成し、使用後にcloseします。接続ごとに外部キー制約を有効にします。
+DB基盤はDrizzle ORM/Kitとbetter-sqlite3を使用します。users/sourcesと教材の再送記録を保持し、教材APIから利用します。教材画面は /admin/sources から利用できます。接続はserver/db内で明示作成し、使用後にcloseします。接続ごとに外部キー制約を有効にします。
 
 `MEDIQUEST_DB_PATH` にリポジトリ外の絶対パスを指定し、親ディレクトリを先に用意してください。`environment.example` は記入例です。以下のCLIは.envを自動読込みしません。
 
@@ -98,7 +98,7 @@ TAKT の承認連携 #10 が未解決のため、このAPIは監督下の個別�
 
 ## 生成受付と下書き保存サービス（Issue #18）
 
-`server/services/generation/service.ts` の `generateQuestions(input, config, provider)` は管理者の生成要求を受け付け、検証済み候補を未公開・未レビューの下書きに保存します。TAKT #10 の承認連携が未解決のため監督下の個別実装です。HTTP APIとAnthropic adapterの接続は次節Issue #20を参照してください。実課金検証、画面、プロセス再起動時の復旧は未対応です。採用・公開APIはIssue #24の節を参照してください。テストの固定providerは `tests/` 内に限り、実アプリの生成機能として公開しません。
+`server/services/generation/service.ts` の `generateQuestions(input, config, provider)` は管理者の生成要求を受け付け、検証済み候補を未公開・未レビューの下書きに保存します。TAKT #10 の承認連携が未解決のため監督下の個別実装です。HTTP APIとAnthropic adapterの接続は次節Issue #20を参照してください。実課金検証とプロセス再起動時の自動復旧は未対応です。管理画面はIssue #72の節を参照してください。採用・公開APIはIssue #24の節を参照してください。テストの固定providerは `tests/` 内に限り、実アプリの生成機能として公開しません。
 
 入力は `sourceId`（正の安全整数）、`requestedCount`（1〜10）、`title`（trim後1〜200 Unicode code points）、`requestKey`（UUID形式）だけです。利用者IDは受け取らず、既存固定管理者のDB上の役割を確認します。model/promptVersionはサーバー側の引数（空白のみ不可・各200 code points以内）から受け付け、runへ固定します。具体的な本番モデルは未決定です。要求比較はsource ID・要求数・セット名を使い、後日のモデル設定変更では再送を競合扱いしません。
 
@@ -116,7 +116,7 @@ TAKT の承認連携 #10 が未解決のため、このAPIは監督下の個別�
 
 TAKT停止中の監督下実装です。`POST /api/admin/sources/:id/generations` にJSON `{ "title": "セット名", "requestedCount": 1 }` とUUIDの `Idempotency-Key` を送ります。利用者・モデル・APIキーはbodyでは指定できません。既存のローカル管理者/socket/Host/Origin/no-store境界を適用します。新規要求はproviderの終了をawaitし201、既存終端受付の再送は200、同一キーの元要求がrunningなら202です。HTTP 201は生成成功の意味ではなく、必ず `status` と `errorCode` を確認してください。失われた応答は同じ入力・キーのPOST再送で取得します。
 
-`GET /api/admin/generations/:id` はrun/set/source ID・状態・要求数・記録済みmodel/promptVersion・時刻・固定errorCodeだけを返します。`updatedAt` は現在の状態を書いた時刻（開始時または終了時）です。APIキー・教材本文・生レスポンスは返しません。runningは実プロセスの生存を保証せず、再起動しても自動再開・失敗化しません。永続worker/復旧/照合/UIは未実装です。
+`GET /api/admin/generations/:id` はrun/set/source ID・状態・要求数・記録済みmodel/promptVersion・時刻・固定errorCodeだけを返します。`updatedAt` は現在の状態を書いた時刻（開始時または終了時）です。APIキー・教材本文・生レスポンスは返しません。runningは実プロセスの生存を保証せず、再起動しても自動再開・失敗化しません。永続worker/自動復旧は未実装です。管理UIはIssue #72の節を参照してください。
 
 新規生成にはサーバー側で `MEDIQUEST_GENERATION_ENABLED=true`、`ANTHROPIC_API_KEY`、`MEDIQUEST_ANTHROPIC_MODEL` を明示します。未設定は503でrun/setを作りません。モデルの具体名・実課金試験はこのIssueでは決めていません。全workspace用キーを使う場合は `MEDIQUEST_ANTHROPIC_WORKSPACE_ID` も設定します。既存受付の再送とGETはこれらの設定を撤去しても利用できます。Nuxt public runtimeConfigには設定しません。
 
@@ -410,3 +410,15 @@ archivedになっても正確な再送が現在状態を返し、元検証・再
 演習画面は保存済みの版・順序・必要選択数を使い、回答保存後も解説を表示したまま「次へ」を待ちます。保存結果が不明な場合は選択を固定し、「保存状態を確認する」または同じ回答の再送で確認します。中断後は同じURLから再開でき、未確定の選択は保持しません。スキップは未回答のままで、通常の未回答の後に戻ります。停止・不備で除外された問題は回答せず、全問除外は「集計対象なし」です。
 
 完了画面はこのページ内に表示します。結果/履歴/誤答復習ページと不備報告は後続Issueであり、未実装ページへのリンクは提供しません。実サーバー・一時SQLiteのブラウザ回帰は `tests/e2e/study.spec.ts`、fixtureは `tests/e2e/fixtures/study-db.ts` です。テストは実教材・実AIキーを使用しません。
+
+## 管理者の教材登録・生成画面（Issue #72）
+
+`/admin/sources` は管理者用の教材一覧、`/admin/sources/new` はテキスト登録、`/admin/sources/:id` は本文と生成受付です。学習者向けの空状態は変更しません。管理データはマウント後に既存APIから取得し、SSR/payloadに教材本文を含めません。権限がない場合やローカルモード無効時は本文・入力フォームを表示せず、403で既存内容も消去します。本文はテキストとしてエスケープします。
+
+教材保存の通信失敗では入力と受付キーをメモリ上で維持し、同じ内容を同じキーで再送します。画面離脱・再読み込み後の教材入力復元は対象外です。生成はセット名と1〜10問を指定し、結果を下書きセットIDで識別できます。セット編集画面は別Issueのため無効なリンクは表示しません。
+
+現在と過去の生成受付はタブのsessionStorageに教材ID・UUID受付キー・セット名・問数・判明したrun IDだけを保存します。教材本文・認証情報・APIキーは保存しません。再読み込みでは保存内容を型・範囲・教材IDで検証します。run ID判明済みならGETで状態を読み、応答喪失でID不明なら「同じ受付を確認」の明示操作で受付時と同じ内容・同じキーをPOST再送します。編集中のセット名や問数を再送に使いません。sessionStorageを利用できない場合もメモリ上の受付を維持し、再読み込みせず確認する案内を出します。壊れた保存内容や読取拒否時は警告し、新規生成には確認チェックを必要とします。タブを閉じた後の復元や、別ブラウザへの受付同期は保証しません。
+
+running・succeeded・failed・状態不明を区別し、GETの更新日時を表示します。runningは処理生存の保証ではありません。状態照会失敗を生成失敗と断定せず、自動再送・時間経過によるfailed化はしません。runningの照会は3秒間隔で、画面離脱時や照会失敗で停止します。新しいキーを使う生成は、旧処理が継続し後から成功する可能性・重複生成・追加課金を確認した明示操作だけです。古い要求の遅延応答が現在の受付を置き換えないよう照合します。過去の受付も履歴に保持し、再読み込み後を含め明示的に切り替えて同じ受付を再確認できます。
+
+検証は既存の全7ゲートに加え、playwright.admin.config.ts による実SQLite/本番モードサーバーを使用します。固定providerはテスト専用build entrypointのaliasでだけ選択し、通常の .output と分離した .nuxt/admin-e2e-output に出力します。本番設定・API・認可・DB schemaは変更しません。通常production buildの固定transport非包含検査も維持します。管理UIテストは両viewport・両テーマ、登録から生成、失敗・応答喪失・同一キー再送、旧run遅延、running残存、入力保持、403、local無効、ポーリング停止を含みます。実AIへの課金テストは行っていません。
