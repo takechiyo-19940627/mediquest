@@ -240,6 +240,13 @@ onBeforeUnmount(() => {
             />
           </template>
         </StudyQuestion>
+        <StudyReport
+          :key="item.id"
+          :session-id="session.id"
+          :item-id="item.id"
+          :disabled="busy"
+          @forbidden="fail({ statusCode: 403 })"
+        />
         <UButton
           v-if="answer.save === 'editing'"
           variant="outline"
