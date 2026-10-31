@@ -1,11 +1,15 @@
 <script setup lang="ts">
 import type { AnswerState, StudyQuestionData } from '../../utils/study-state';
-defineProps<{ question: StudyQuestionData; answer: AnswerState }>();
+defineProps<{
+  question: StudyQuestionData;
+  answer: AnswerState;
+  saveMessage?: string;
+}>();
 defineEmits<{ select: [id: string]; submit: []; next: [] }>();
 </script>
 
 <template>
-  <section aria-labelledby="question-title" class="space-y-6">
+  <section aria-labelledby="question-title" class="space-y-6 break-words">
     <div>
       <h2 id="question-title" class="text-xl font-semibold">
         {{ question.title }}
@@ -60,7 +64,8 @@ defineEmits<{ select: [id: string]; submit: []; next: [] }>();
       </div>
     </fieldset>
     <p role="status" aria-live="polite" class="text-sm">
-      <template v-if="answer.save === 'editing'"
+      <template v-if="saveMessage">{{ saveMessage }}</template>
+      <template v-else-if="answer.save === 'editing'"
         >{{ answer.selected.length }} /
         {{ question.required }} 選択済み</template
       >
