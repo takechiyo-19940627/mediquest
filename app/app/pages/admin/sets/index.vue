@@ -45,7 +45,9 @@ onMounted(load);
 <template>
   <AdminShell>
     <h1 class="text-2xl font-semibold">問題セット管理</h1>
-    <p>生成した下書きを確認し、採用する問題と順序を決めて公開します。</p>
+    <p>
+      AI生成または手動登録した下書きを確認し、採用する問題と順序を決めて公開します。
+    </p>
     <p v-if="loading" role="status">セットを読み込み中です。</p>
     <div v-if="error" role="alert" class="space-y-3">
       <p>{{ error }}</p>
@@ -54,7 +56,7 @@ onMounted(load);
       >
     </div>
     <p v-if="loaded && !items.length && !loading">
-      セットはまだありません。教材の詳細から問題を生成してください。
+      セットはまだありません。教材の詳細からAI生成または手動登録で問題を作成してください。
     </p>
     <ul class="space-y-3">
       <li v-for="item in items" :key="item.id">

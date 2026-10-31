@@ -15,6 +15,7 @@ export interface AdminCandidate extends CandidateContent {
   reviewedAt: number | null;
   fingerprint: string;
   derivedFromVersionId: number | null;
+  manualCreatedBy?: number | null;
 }
 export interface AdminSetSummary {
   id: number;

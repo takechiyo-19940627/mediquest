@@ -18,7 +18,7 @@ defineProps<{
     </h3>
     <p><strong>正答：</strong>{{ answerLabel }}</p>
     <div>
-      <h4 class="font-semibold">AI解説{{ live ? '' : '（デモ）' }}</h4>
+      <h4 class="font-semibold">解説{{ live ? '' : '（デモ）' }}</h4>
       <p>{{ explanation }}</p>
     </div>
     <div>
