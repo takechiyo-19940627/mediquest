@@ -75,7 +75,9 @@ test('registers escaped text and generates a single real draft with keyboard, th
       ),
     ).toBe(true);
   }
-  await expect(page.locator('a[href^="/admin/sets/"]')).toHaveCount(0);
+  await expect(
+    page.getByRole('link', { name: '下書きセットを確認' }),
+  ).toHaveAttribute('href', /\/admin\/sets\/[1-9][0-9]*$/);
   const response = await page.request.get(new URL(page.url()).pathname);
   expect(await response.text()).not.toContain('window.LEAK');
 });

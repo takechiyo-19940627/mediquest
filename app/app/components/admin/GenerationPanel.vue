@@ -263,8 +263,14 @@ onBeforeUnmount(() => {
         <p v-if="run?.status === 'succeeded'">
           作成した下書きセット: #{{
             run.setId
-          }}。セットの確認・編集画面は準備中です。
+          }}。内容を確認してから公開してください。
         </p>
+        <UButton
+          v-if="run?.status === 'succeeded'"
+          :to="`/admin/sets/${run.setId}`"
+          variant="outline"
+          >下書きセットを確認</UButton
+        >
         <p v-if="run?.status === 'failed'">
           教材は保存されています。原因を確認してから、必要に応じて新しい試行を開始できます。
         </p>
