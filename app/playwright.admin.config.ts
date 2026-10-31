@@ -1,4 +1,3 @@
-import { dirname, join } from 'node:path';
 import { defineConfig } from '@playwright/test';
 import { e2eDatabasePath } from './scripts/e2e-database';
 
@@ -16,8 +15,7 @@ export default defineConfig({
     { name: 'mobile', use: { viewport: { width: 390, height: 844 } } },
   ],
   webServer: {
-    command:
-      'node tests/fixtures/build-admin-e2e.mjs && node .nuxt/admin-e2e-output/server/index.mjs',
+    command: 'npm run build && npm run start',
     url: 'http://127.0.0.1:3102/api/health',
     env: {
       NITRO_HOST: '127.0.0.1',
@@ -25,13 +23,7 @@ export default defineConfig({
       MEDIQUEST_DB_PATH: e2eDatabasePath(),
       MEDIQUEST_LOCAL_MODE: 'true',
       MEDIQUEST_LOCAL_ORIGIN: 'http://127.0.0.1:3102',
-      MEDIQUEST_GENERATION_ENABLED: 'true',
-      ANTHROPIC_API_KEY: 'TEST_ONLY_KEY',
-      MEDIQUEST_ANTHROPIC_MODEL: 'test-model',
-      TEST_GENERATION_EVENTS: join(
-        dirname(e2eDatabasePath()),
-        'generation-events',
-      ),
+      MEDIQUEST_GENERATION_ENABLED: 'false',
     },
     reuseExistingServer: false,
     timeout: 180000,

@@ -443,3 +443,39 @@ export const manualSetRequests = sqliteTable(
     unique('manual_set_request_unique').on(table.requestedBy, table.requestKey),
   ],
 );
+
+// A paper is a published set. Metadata belongs to that immutable edition;
+// question numbers belong to fixed versions, so saved attempts never change.
+export const pastExams = sqliteTable('past_exams', {
+  setId: integer('set_id')
+    .primaryKey()
+    .references(() => questionSets.id, { onDelete: 'restrict' }),
+  examName: text('exam_name').notNull(),
+  year: text('year').notNull(),
+  subject: text('subject').notNull(),
+  sourceReference: text('source_reference').notNull().default(''),
+});
+export const pastExamQuestions = sqliteTable('past_exam_questions', {
+  questionVersionId: integer('question_version_id')
+    .primaryKey()
+    .references(() => questionVersions.id, { onDelete: 'restrict' }),
+  questionNumber: text('question_number').notNull(),
+});
+export const pastExamRequests = sqliteTable(
+  'past_exam_requests',
+  {
+    id: integer('id').primaryKey({ autoIncrement: true }),
+    requestedBy: integer('requested_by')
+      .notNull()
+      .references(() => users.id, { onDelete: 'restrict' }),
+    requestKey: text('request_key').notNull(),
+    requestHash: text('request_hash').notNull(),
+    setId: integer('set_id')
+      .notNull()
+      .references(() => questionSets.id, { onDelete: 'restrict' }),
+    createdAt: integer('created_at').notNull(),
+  },
+  (table) => [
+    unique('past_exam_request_unique').on(table.requestedBy, table.requestKey),
+  ],
+);

@@ -22,7 +22,7 @@ const published = and(
   isNotNull(questionSets.publishedAt),
 );
 // Keep the public DTO explicit. Never reuse administrative candidate responses.
-const fields = {
+export const publishedSetFields = {
   id: questionSets.id,
   title: questionSets.title,
   description: questionSets.description,
@@ -37,7 +37,7 @@ export function listPublishedSets(
     requireLocalLearner({ db: tx });
     const before = page.before;
     const rows = tx
-      .select(fields)
+      .select(publishedSetFields)
       .from(questionSets)
       .where(
         and(
@@ -71,7 +71,7 @@ export function getPublishedSet(connection: Connection, id: number) {
   return connection.db.transaction((tx) => {
     requireLocalLearner({ db: tx });
     const row = tx
-      .select(fields)
+      .select(publishedSetFields)
       .from(questionSets)
       .where(and(published, eq(questionSets.id, id)))
       .get();

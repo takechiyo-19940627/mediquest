@@ -19,15 +19,15 @@ defineProps<{
     <p><strong>正答：</strong>{{ answerLabel }}</p>
     <div>
       <h4 class="font-semibold">解説{{ live ? '' : '（デモ）' }}</h4>
-      <p>{{ explanation }}</p>
+      <p>{{ explanation || '解説はまだ登録されていません。' }}</p>
     </div>
-    <div>
+    <div v-if="quote">
       <h4 class="font-semibold">教材からの引用{{ live ? '' : '（デモ）' }}</h4>
       <blockquote class="mt-2 border-l-4 border-primary pl-4">
         {{ quote }}
       </blockquote>
     </div>
-    <p class="text-sm text-muted">
+    <p v-if="quote" class="text-sm text-muted">
       引用の一致は、正解の妥当性を保証するものではありません。
     </p>
   </section>
