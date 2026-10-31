@@ -15,9 +15,11 @@ describe('Nuxt HTTP server', async () => {
     });
   });
 
-  it('server-renders the Japanese learner empty state', async () => {
+  it('server-renders loading without claiming the catalog is empty', async () => {
     const html = await $fetch<string>('/');
-    expect(html).toContain('学習できる問題はまだありません');
+    // AC-2.4: catalog requests run in the browser to retain the socket boundary.
+    expect(html).toContain('公開セットを読み込み中です。');
+    expect(html).not.toContain('学習できる問題はまだありません');
     expect(html).toContain('lang="ja"');
   });
 });
