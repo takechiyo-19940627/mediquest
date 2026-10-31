@@ -61,6 +61,7 @@ test('registers without AI or source, studies, revises and preserves historical 
   expect(await publicResponse.text()).not.toMatch(/answerIds|正答の選択肢/);
   await page.getByRole('link', { name: 'この過去問を解く' }).click();
   await page.getByRole('button', { name: '演習を始める', exact: true }).click();
+  await expect(page).toHaveURL(/\/sessions\/\d+$/);
   const sessionPath = new URL(page.url()).pathname;
   await page.getByRole('radio', { name: '誤答の選択肢', exact: true }).check();
   await page.getByRole('button', { name: '回答する', exact: true }).click();
