@@ -1,3 +1,4 @@
+import { writeFileSync } from 'node:fs';
 import AxeBuilder from '@axe-core/playwright';
 import { expect, test } from '@playwright/test';
 import type { Page, TestInfo } from '@playwright/test';
@@ -5,26 +6,39 @@ import { emptyCatalog } from '../e2e/fixtures/catalog-db';
 
 test.beforeEach(() => emptyCatalog());
 
+async function theme(page: Page, label: string) {
+  await page.getByRole('button', { name: label, exact: true }).click();
+  if (label === 'ダーク')
+    await expect(page.locator('html')).toHaveClass(/dark/);
+  else await expect(page.locator('html')).not.toHaveClass(/dark/);
+}
+async function capture(page: Page, info: TestInfo, name: string) {
+  // Playwright fast-forwards finite dialog transitions before measuring colors.
+  await page.screenshot({
+    path: info.outputPath(`${name}.png`),
+    fullPage: true,
+    animations: 'disabled',
+  });
+  const result = await new AxeBuilder({ page })
+    .withTags(['wcag2a', 'wcag2aa', 'wcag21a', 'wcag21aa'])
+    .analyze();
+  const path = info.outputPath(`${name}-accessibility.json`);
+  writeFileSync(path, JSON.stringify(result, null, 2));
+  await info.attach(`${name}-accessibility`, {
+    path,
+    contentType: 'application/json',
+  });
+  expect.soft(result.violations, name).toEqual([]);
+  expect(
+    await page.evaluate(
+      () => document.documentElement.scrollWidth <= innerWidth,
+    ),
+  ).toBe(true);
+}
 async function evidence(page: Page, info: TestInfo, name: string) {
-  for (const theme of ['ライト', 'ダーク']) {
-    await page.getByRole('button', { name: theme, exact: true }).click();
-    const result = await new AxeBuilder({ page })
-      .withTags(['wcag2a', 'wcag2aa', 'wcag21a', 'wcag21aa'])
-      .analyze();
-    await info.attach(`${name}-${theme}-accessibility`, {
-      body: JSON.stringify(result, null, 2),
-      contentType: 'application/json',
-    });
-    expect.soft(result.violations, `${name} ${theme}`).toEqual([]);
-    expect(
-      await page.evaluate(
-        () => document.documentElement.scrollWidth <= innerWidth,
-      ),
-    ).toBe(true);
-    await page.screenshot({
-      path: info.outputPath(`${name}-${theme}.png`),
-      fullPage: true,
-    });
+  for (const label of ['ライト', 'ダーク']) {
+    await theme(page, label);
+    await capture(page, info, `${name}-${label}`);
   }
 }
 
@@ -148,6 +162,44 @@ test('complete local release journey uses real APIs and preserves historical ans
   await page.goto('/history');
   await evidence(page, info, 'history');
 
+  await page.goto(`/sessions/${sessionId}/result`);
+  for (const label of ['ライト', 'ダーク']) {
+    await theme(page, label);
+    await page
+      .getByRole('button', { name: 'この問題の不備を報告', exact: true })
+      .first()
+      .click();
+    await page
+      .getByRole('textbox', { name: '不備の理由' })
+      .fill('教材との対応を管理者に確認してほしい');
+    await capture(page, info, `report-dialog-${label}`);
+    if (label === 'ダーク') {
+      await page
+        .getByRole('button', { name: '報告を送信する', exact: true })
+        .click();
+      await expect(
+        page.getByText('報告を受け付けました。', { exact: false }),
+      ).toBeVisible();
+    }
+    await page.getByRole('button', { name: '閉じる', exact: true }).click();
+  }
+  await page.goto('/admin/reports');
+  await evidence(page, info, 'report-list');
+  await page.getByRole('link', { name: /報告 #/ }).click();
+  await evidence(page, info, 'report-decision');
+  await page.getByLabel('判断', { exact: true }).selectOption('dismissed');
+  await page
+    .getByRole('textbox', { name: '判断の理由' })
+    .fill('教材と照合し現在の内容で問題ないと確認しました');
+  await page
+    .getByRole('button', { name: 'この判断を確定する', exact: true })
+    .click();
+  await expect(
+    page.getByRole('heading', { name: /報告 #.*問題なし/ }),
+  ).toBeVisible();
+  await page.goto('/admin/sets');
+  await evidence(page, info, 'set-list');
+
   await page.goto(`/admin/sets/${setId}`);
   await page
     .getByLabel('改訂セット名', { exact: true })
@@ -173,7 +225,17 @@ test('complete local release journey uses real APIs and preserves historical ans
   await candidate(page, 1)
     .getByRole('button', { name: '内容を保存', exact: true })
     .click();
-  await confirm(page, 1);
+  // Editing a shared version creates a new version ID; candidate order can change.
+  const edited = page
+    .getByRole('region')
+    .filter({ has: page.getByText('改訂した受入確認問題', { exact: true }) });
+  await edited
+    .getByLabel('問題・選択肢・正答・解説・引用の内容を確認しました', {
+      exact: true,
+    })
+    .check();
+  await edited.getByRole('button', { name: /の確認を記録$/ }).click();
+  await expect(edited.getByText('確認済み', { exact: true })).toBeVisible();
   await publish(page, true);
   expect((await request.get(`/api/sets/${setId}`)).status()).toBe(404);
   expect((await request.get(`/api/sets/${revisionId}`)).status()).toBe(200);

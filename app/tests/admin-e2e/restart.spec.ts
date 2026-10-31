@@ -140,7 +140,7 @@ test('fresh CLI setup and backup/restore restart preserve browser progress', asy
           },
         })
       ).status(),
-    ).toBe(200);
+    ).toBe(201);
     await page.goto(`${origin}/sets/${setId}`);
     await page
       .getByRole('button', { name: '演習を始める', exact: true })

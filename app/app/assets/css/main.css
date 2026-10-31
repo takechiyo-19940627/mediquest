@@ -5,6 +5,16 @@
   --font-sans: system-ui, sans-serif;
 }
 
+:root {
+  --ui-primary: var(--ui-color-primary-700);
+  --ui-text-muted: var(--ui-color-neutral-600);
+}
+
+.dark {
+  --ui-primary: var(--ui-color-primary-400);
+  --ui-text-muted: var(--ui-color-neutral-400);
+}
+
 body {
   margin: 0;
   line-height: 1.75;
