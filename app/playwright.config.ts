@@ -1,12 +1,5 @@
-import { randomUUID } from 'node:crypto';
-import { tmpdir } from 'node:os';
-import { join } from 'node:path';
 import { defineConfig } from '@playwright/test';
-
-process.env.MEDIQUEST_E2E_DB ??= join(
-  join(tmpdir(), `mediquest-e2e-${randomUUID()}`),
-  'test.sqlite',
-);
+import { e2eDatabasePath } from './scripts/e2e-database';
 
 export default defineConfig({
   globalSetup: './tests/e2e/global-setup.ts',
@@ -26,7 +19,7 @@ export default defineConfig({
     env: {
       NITRO_HOST: '127.0.0.1',
       NITRO_PORT: '3100',
-      MEDIQUEST_DB_PATH: process.env.MEDIQUEST_E2E_DB,
+      MEDIQUEST_DB_PATH: e2eDatabasePath(),
       MEDIQUEST_LOCAL_MODE: 'true',
       MEDIQUEST_LOCAL_ORIGIN: 'http://127.0.0.1:3100',
     },

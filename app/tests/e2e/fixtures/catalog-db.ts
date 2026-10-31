@@ -1,3 +1,4 @@
+import { e2eDatabasePath } from '../../../scripts/e2e-database';
 import { catalogFixture } from '../../fixtures/catalog';
 import { openDatabase } from '../../../server/db/connection';
 import { migrateDatabase } from '../../../server/db/migrate';
@@ -12,7 +13,7 @@ import {
 } from '../../../server/services/publication/service';
 
 export function database() {
-  return openDatabase({ MEDIQUEST_DB_PATH: process.env.MEDIQUEST_E2E_DB });
+  return openDatabase({ MEDIQUEST_DB_PATH: e2eDatabasePath() });
 }
 export function emptyCatalog() {
   const c = database();
@@ -84,7 +85,7 @@ export async function seedCatalog() {
       .run('ARCHIVED_SECRET_TITLE', f.archivedId);
     // Published zero-question sets remain visible.
     f.c.client.prepare('delete from set_items where set_id=?').run(ids[21]!);
-    await f.c.client.backup(process.env.MEDIQUEST_E2E_DB!);
+    await f.c.client.backup(e2eDatabasePath());
     return { ids, draftId: f.draftId, archivedId: f.archivedId };
   } finally {
     f.close();
