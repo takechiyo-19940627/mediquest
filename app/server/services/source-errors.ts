@@ -1,4 +1,5 @@
 export const sourceErrors = {
+  csv_unavailable: [409, '利用停止中の問題を含むためCSVを出力できません。'],
   invalid: [400, '入力内容を確認してください。'],
   forbidden: [403, 'この操作は許可されていません。'],
   missing: [404, '教材が見つかりません。'],

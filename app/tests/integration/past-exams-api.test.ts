@@ -1,3 +1,4 @@
+import { parsePastExamCsv } from '../../shared/utils/past-exam-csv';
 import { randomUUID } from 'node:crypto';
 import { fileURLToPath } from 'node:url';
 import { afterAll, describe, expect, it } from 'vitest';
@@ -69,6 +70,32 @@ describe('past paper registration API', async () => {
     expect((await fetch('/api/past-exams?before=bad')).status).toBe(400);
     expect((await fetch('/api/admin/past-exams?limit=101')).status).toBe(400);
   });
+  it('exports only to administrators and preserves CSV contents without reactivating unavailable questions', async () => {
+    const input = pastExamInputFixture();
+    input.questions[0]!.body = '=SUM(1,2)\n日本語';
+    const created = await post(input);
+    const { setId } = await created.json();
+    const response = await fetch(`/api/admin/past-exams/${setId}/csv`);
+    expect(response.status).toBe(200);
+    expect(response.headers.get('cache-control')).toBe('no-store');
+    expect(response.headers.get('content-type')).toContain('text/csv');
+    expect(response.headers.get('content-disposition')).toContain(
+      `past-exam-${setId}.csv`,
+    );
+    const parsed = parsePastExamCsv(await response.text());
+    const { confirmed: _confirmed, ...expected } = input;
+    expect(parsed).toEqual(expected);
+    expect((await post({ ...parsed, confirmed: true })).status).toBe(201);
+    expect((await fetch('/api/admin/past-exams/999999/csv')).status).toBe(404);
+    f.c.client
+      .prepare(
+        "update question_versions set invalidated_at=1, invalidated_by=1, invalidation_reason='test' where id in (select question_version_id from set_items where set_id=?)",
+      )
+      .run(setId);
+    const blocked = await fetch(`/api/admin/past-exams/${setId}/csv`);
+    expect(blocked.status).toBe(409);
+    expect(await blocked.text()).not.toContain('SUM');
+  });
   it('serializes concurrent creation and revision requests without duplicate editions', async () => {
     const key = randomUUID();
     const responses = await Promise.all([
@@ -115,6 +142,7 @@ describe('past paper registration API', async () => {
       expect((await post()).status).toBe(403);
       expect((await fetch('/api/admin/past-exams')).status).toBe(403);
       expect((await fetch('/api/admin/past-exams/1')).status).toBe(403);
+      expect((await fetch('/api/admin/past-exams/1/csv')).status).toBe(403);
       expect((await fetch('/api/past-exams')).status).toBe(200);
     } finally {
       f.c.client.exec("update users set role='admin' where id=1");
