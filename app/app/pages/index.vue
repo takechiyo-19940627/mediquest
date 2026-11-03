@@ -58,9 +58,6 @@ onMounted(() => load());
   <LearnerShell>
     <h1 class="text-2xl font-semibold">過去問で学ぶ</h1>
     <p>登録した過去問を解き、間違えた問題を繰り返し復習しましょう。</p>
-    <UButton to="/admin/past-exams/new" variant="outline"
-      >過去問を登録する</UButton
-    >
     <StudyHistory interrupted />
     <p v-if="loading" role="status">過去問を読み込み中です。</p>
     <div v-if="error" role="alert" class="space-y-3">
@@ -72,7 +69,7 @@ onMounted(() => load());
     <UCard v-if="loaded && !items.length && !error">
       <h2 class="text-lg font-semibold">学習できる問題はまだありません</h2>
       <p class="mt-2 text-muted">
-        お手元の過去問を1問から登録できます。問題文・選択肢・正答を入力すると、ここから演習を始められます。
+        過去問が用意されると、ここから演習を始められます。
       </p>
     </UCard>
     <ul v-if="items.length" class="space-y-6" aria-label="過去問">
