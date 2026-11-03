@@ -1,10 +1,39 @@
 <script setup lang="ts">
-import { adminError, validAdminId } from '~/utils/admin-state';
+import { adminError, adminStatus, validAdminId } from '~/utils/admin-state';
+import { downloadCsv } from '~/utils/csv-download';
 import type { PastExam } from '~/utils/past-exams';
 const route = useRoute();
 const exam = ref<PastExam | null>(null);
 const loading = ref(true);
 const error = ref('');
+const exporting = ref(false);
+const exportError = ref('');
+async function exportCsv() {
+  if (!exam.value || exporting.value) return;
+  const id = exam.value.id;
+  const token = sequence;
+  exporting.value = true;
+  exportError.value = '';
+  try {
+    const csv = await $fetch<string>(`/api/admin/past-exams/${id}/csv`, {
+      responseType: 'text',
+      retry: 0,
+    });
+    if (active && token === sequence)
+      downloadCsv(csv, `mediquest-past-exam-${id}.csv`);
+  } catch (cause) {
+    if (active && token === sequence) {
+      if (adminStatus(cause) === 403) forbidden();
+      else
+        exportError.value =
+          adminStatus(cause) === 409
+            ? '停止・不備確定の問題を含むため、CSVを書き出せません。'
+            : 'CSVを書き出せませんでした。時間をおいて再試行してください。';
+    }
+  } finally {
+    if (active) exporting.value = false;
+  }
+}
 let active = true;
 let sequence = 0;
 onBeforeUnmount(() => {
@@ -14,6 +43,7 @@ onBeforeUnmount(() => {
 async function load() {
   const token = ++sequence;
   exam.value = null;
+  exportError.value = '';
   loading.value = true;
   error.value = '';
   const id = String(route.params.id);
@@ -56,6 +86,20 @@ function forbidden() {
             登録 {{ exam.questionCount }}問 / 出題可能
             {{ exam.availableQuestionCount }}問
           </p>
+          <p>CSVには正答と解説が含まれます。保存済みの内容を書き出します。</p>
+          <UButton
+            variant="outline"
+            :loading="exporting"
+            :disabled="
+              exporting || exam.availableQuestionCount !== exam.questionCount
+            "
+            @click="exportCsv"
+            >CSVをエクスポート</UButton
+          >
+          <p v-if="exam.availableQuestionCount !== exam.questionCount">
+            停止・不備確定の問題を含むため、CSVを書き出せません。
+          </p>
+          <p v-if="exportError" role="alert">{{ exportError }}</p>
           <UButton v-if="exam.status === 'published'" :to="`/sets/${exam.id}`"
             >この過去問を解く</UButton
           >

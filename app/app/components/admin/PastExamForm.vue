@@ -1,6 +1,12 @@
 <script setup lang="ts">
 import type { PastExam, PastQuestion } from '~/utils/past-exams';
 import { adminError, adminStatus } from '~/utils/admin-state';
+import {
+  maxPastExamCsvBytes,
+  parsePastExamCsv,
+  serializePastExamCsv,
+} from '#shared/utils/past-exam-csv';
+import { downloadCsv } from '~/utils/csv-download';
 const props = defineProps<{ exam?: PastExam }>();
 const emit = defineEmits<{ forbidden: [] }>();
 const examName = ref(props.exam?.examName ?? '');
@@ -55,7 +61,81 @@ const receipt = ref<{
     questions: PastQuestion[];
   };
 } | null>(null);
-const locked = computed(() => saving.value || receipt.value !== null);
+const readingCsv = ref(false);
+const csvError = ref('');
+const csvStatus = ref('');
+const pendingCsv = ref<ReturnType<typeof parsePastExamCsv> | null>(null);
+const locked = computed(
+  () => saving.value || receipt.value !== null || readingCsv.value,
+);
+async function readCsv(event: Event) {
+  const input = event.target as HTMLInputElement;
+  const file = input.files?.[0];
+  input.value = '';
+  if (!file || locked.value || props.exam) return;
+  csvError.value = '';
+  csvStatus.value = '';
+  pendingCsv.value = null;
+  readingCsv.value = true;
+  try {
+    if (file.size > maxPastExamCsvBytes)
+      throw new Error('CSVは2 MiB以内にしてください。');
+    const bytes = await file.arrayBuffer();
+    if (!active) return;
+    let text: string;
+    try {
+      text = new TextDecoder('utf-8', { fatal: true }).decode(bytes);
+    } catch {
+      throw new Error('UTF-8形式のCSVを選んでください。');
+    }
+    pendingCsv.value = parsePastExamCsv(text);
+  } catch (cause) {
+    if (active)
+      csvError.value =
+        cause instanceof Error ? cause.message : 'CSVを読み込めませんでした。';
+  } finally {
+    if (active) readingCsv.value = false;
+  }
+}
+function applyCsv() {
+  if (locked.value || !pendingCsv.value || props.exam) return;
+  const input = pendingCsv.value;
+  examName.value = input.examName;
+  year.value = input.year;
+  subject.value = input.subject;
+  sourceReference.value = input.sourceReference;
+  questions.value = input.questions.map((content) => ({
+    key: nextKey++,
+    content,
+  }));
+  confirmed.value = false;
+  error.value = '';
+  pendingCsv.value = null;
+  csvStatus.value = `${questions.value.length}問をフォームに読み込みました。まだ登録されていません。内容を確認して登録してください。`;
+}
+function downloadTemplate() {
+  downloadCsv(
+    serializePastExamCsv({
+      examName: 'サンプル試験',
+      year: '2025',
+      subject: 'サンプル科目',
+      sourceReference: '',
+      questions: [
+        {
+          questionNumber: '1',
+          body: '正しい選択肢を選んでください。',
+          choices: [
+            { id: 'a', label: '選択肢A' },
+            { id: 'b', label: '選択肢B' },
+          ],
+          answerIds: ['a'],
+          explanation: '',
+        },
+      ],
+    }),
+    'mediquest-past-exam-template.csv',
+  );
+}
 let active = true;
 onBeforeUnmount(() => {
   active = false;
@@ -101,7 +181,7 @@ function addQuestion() {
     });
 }
 async function save() {
-  if (saving.value || conflict.value) return;
+  if (saving.value || readingCsv.value || conflict.value) return;
   error.value = '';
   if (!receipt.value) {
     if (
@@ -194,6 +274,53 @@ async function save() {
 </script>
 <template>
   <div class="space-y-5">
+    <UCard v-if="!exam">
+      <div class="space-y-3">
+        <h2 class="text-lg font-semibold">CSVから読み込む</h2>
+        <p>
+          UTF-8のCSVを選ぶと内容を検証します。1ファイルに1試験・科目、最大100問・2
+          MiBまで。読み込むだけでは登録されません。
+        </p>
+        <UButton variant="outline" :disabled="locked" @click="downloadTemplate"
+          >CSVテンプレートをダウンロード</UButton
+        >
+        <label for="past-exam-csv-file" class="block font-medium"
+          >過去問CSVファイル</label
+        >
+        <input
+          id="past-exam-csv-file"
+          type="file"
+          accept=".csv,text/csv"
+          :disabled="locked"
+          class="block w-full rounded-md border border-default p-2 focus-visible:outline-2 focus-visible:outline-primary"
+          @change="readCsv"
+        />
+        <p v-if="readingCsv" role="status">CSVを読み込み・検証しています。</p>
+        <p v-if="csvError" role="alert">
+          {{ csvError }} 入力中の内容は変更していません。
+        </p>
+        <p v-if="csvStatus" role="status">{{ csvStatus }}</p>
+        <div v-if="pendingCsv" class="space-y-3">
+          <p class="break-words">
+            {{ pendingCsv.examName }} / {{ pendingCsv.year }} /
+            {{ pendingCsv.subject }}：{{ pendingCsv.questions.length }}問
+          </p>
+          <p>反映すると、現在フォームに入力している内容を置き換えます。</p>
+          <div class="flex flex-wrap gap-3">
+            <UButton :disabled="locked" @click="applyCsv"
+              >CSVの内容をフォームに反映</UButton
+            >
+            <UButton
+              variant="outline"
+              color="neutral"
+              :disabled="locked"
+              @click="pendingCsv = null"
+              >読み込みを取り消す</UButton
+            >
+          </div>
+        </div>
+      </div>
+    </UCard>
     <form class="space-y-6" @submit.prevent="save">
       <UFormField label="試験名" required
         ><UInput
@@ -341,7 +468,7 @@ async function save() {
           v-if="!conflict"
           type="submit"
           :loading="saving"
-          :disabled="saving"
+          :disabled="saving || readingCsv"
           >{{
             receipt
               ? '同じ内容で保存結果を確認'
