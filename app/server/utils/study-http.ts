@@ -1,19 +1,15 @@
 import { getHeader, setHeader, setResponseStatus } from 'h3';
 import type { H3Event } from 'h3';
-import { openDatabase } from '../db/connection';
+import { getSharedDatabase } from '../db/shared';
 import type { Connection } from '../db/connection';
 import { requireLocalRequest } from '../services/local-admin';
 import { requireLocalLearner } from '../services/learning-catalog/service';
 import { safeSourceError } from '../services/source-errors';
 import { StudyError } from '../services/study/input';
 export function withStudyDatabase<T>(action: (connection: Connection) => T) {
-  const connection = openDatabase();
-  try {
-    requireLocalLearner(connection);
-    return action(connection);
-  } finally {
-    connection.close();
-  }
+  const connection = getSharedDatabase();
+  requireLocalLearner(connection);
+  return action(connection);
 }
 export async function studyEndpoint(
   event: H3Event,

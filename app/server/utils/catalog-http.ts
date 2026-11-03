@@ -1,6 +1,6 @@
 import { getHeader, setHeader, setResponseStatus } from 'h3';
 import type { H3Event } from 'h3';
-import { openDatabase } from '../db/connection';
+import { getSharedDatabase } from '../db/shared';
 import type { Connection } from '../db/connection';
 import { requireLocalRequest } from '../services/local-admin';
 import {
@@ -19,13 +19,9 @@ export function catalogEndpoint(
       host: getHeader(event, 'host'),
       origin: getHeader(event, 'origin'),
     });
-    const connection = openDatabase();
-    try {
-      requireLocalLearner(connection);
-      return action(connection);
-    } finally {
-      connection.close();
-    }
+    const connection = getSharedDatabase();
+    requireLocalLearner(connection);
+    return action(connection);
   } catch (error) {
     if (error instanceof CatalogMissing) {
       setResponseStatus(event, 404);
