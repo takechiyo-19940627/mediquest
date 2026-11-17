@@ -1,6 +1,6 @@
 import { getHeader, setHeader, setResponseStatus } from 'h3';
 import type { H3Event } from 'h3';
-import { openDatabase } from '../db/connection';
+import { getSharedDatabase } from '../db/shared';
 import type { Connection } from '../db/connection';
 import {
   requireLocalRequest,
@@ -12,13 +12,9 @@ import { maxRequestBytes } from '../services/source-input';
 export function withSourceDatabase<T>(
   action: (connection: Connection) => T,
 ): T {
-  const connection = openDatabase();
-  try {
-    requireAdministrator(connection);
-    return action(connection);
-  } finally {
-    connection.close();
-  }
+  const connection = getSharedDatabase();
+  requireAdministrator(connection);
+  return action(connection);
 }
 export async function sourceEndpoint(
   event: H3Event,
@@ -31,7 +27,7 @@ export async function sourceEndpoint(
       host: getHeader(event, 'host'),
       origin: getHeader(event, 'origin'),
     });
-    // Authorize before reading the body, but never hold a SQLite connection while waiting for it.
+    // Authorize before reading the body, but never hold a transaction while waiting for it.
     withSourceDatabase(() => undefined);
     return await action();
   } catch (error) {

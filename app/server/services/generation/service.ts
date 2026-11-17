@@ -1,5 +1,5 @@
 import { and, eq } from 'drizzle-orm';
-import { openDatabase } from '../../db/connection';
+import { getSharedDatabase } from '../../db/shared';
 import type { Connection } from '../../db/connection';
 import {
   generationRuns,
@@ -37,7 +37,7 @@ function summary(run: Run) {
   };
 }
 function withDatabase<T>(
-  connect: Connect,
+  connect: Connect | undefined,
   action: (connection: Connection) => T,
 ): T {
   let connection: Connection | undefined;
@@ -45,14 +45,15 @@ function withDatabase<T>(
   let failure: unknown;
   let failed = false;
   try {
-    connection = connect();
+    connection = connect ? connect() : getSharedDatabase();
     result = action(connection);
   } catch (error) {
     failed = true;
     failure = error;
   }
   try {
-    connection?.close();
+    // Explicit factories own their connections (tests/maintenance); the server borrows.
+    if (connect) connection?.close();
   } catch (error) {
     if (!failed) {
       failed = true;
@@ -72,7 +73,7 @@ function withDatabase<T>(
 export function completeGeneration(
   runId: number,
   outcome: GenerationOutcome,
-  connect: Connect = openDatabase,
+  connect?: Connect,
 ) {
   if (!Number.isSafeInteger(runId) || runId < 1)
     throw new GenerationError('invalid');
@@ -186,7 +187,7 @@ async function executeGeneration(
   value: unknown,
   config: GenerationConfig | (() => GenerationConfig),
   provider: GenerationProvider,
-  connect: Connect = openDatabase,
+  connect?: Connect,
   onAccepted: (replayed: boolean) => void = () => {},
 ) {
   const input = generationInput(value);
@@ -311,7 +312,7 @@ export function generateQuestions(
   value: unknown,
   config: GenerationConfig | (() => GenerationConfig),
   provider: GenerationProvider,
-  connect: Connect = openDatabase,
+  connect?: Connect,
 ) {
   return executeGeneration(value, config, provider, connect);
 }
@@ -319,7 +320,7 @@ export async function generateQuestionsWithReceipt(
   value: unknown,
   config: () => GenerationConfig,
   provider: GenerationProvider,
-  connect: Connect = openDatabase,
+  connect?: Connect,
 ) {
   let replayed = false;
   const run = await executeGeneration(
@@ -333,7 +334,7 @@ export async function generateQuestionsWithReceipt(
   );
   return { ...run, replayed };
 }
-export function generationStatus(id: number, connect: Connect = openDatabase) {
+export function generationStatus(id: number, connect?: Connect) {
   if (!Number.isSafeInteger(id) || id < 1) throw new GenerationError('invalid');
   return withDatabase(connect, (connection) => {
     const user = requireAdministrator(connection);

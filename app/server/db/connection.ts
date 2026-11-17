@@ -7,7 +7,7 @@ import * as schema from './schema.ts';
 export function openDatabase(
   env: Record<string, string | undefined> = process.env,
 ) {
-  const client = new Database(databasePath(env));
+  const client = new Database(databasePath(env), { timeout: 1000 });
   try {
     client.pragma('foreign_keys = ON');
     const db = drizzle(client, { schema });
